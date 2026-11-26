@@ -29,7 +29,8 @@ class VideoContext:
 
     def billed(self, duration: float) -> int:
         return next((s for s in (4, 6, 8) if s >= duration), 8)  # Veo bills 4/6/8 s clips
-PAD = 0.08  # seconds of silence after each scene; keeps cuts snappy
+PAD = 0.08  # seconds of silence after each scene (per_scene voice mode); keeps cuts snappy
+HOOK_PAD = 0.18  # a beat after the hook in continuous mode, where the hook is a separate read
 
 
 def _ts(sec: float) -> str:
@@ -231,12 +232,14 @@ def final_command(concat_list: Path, ass: Path, out: Path, audio: Path | None = 
 
 
 def run(script: Script, workdir: Path, scene_audio: list[Path] | None = None, reuse_from: Path | None = None,
-        video_ctx: VideoContext | None = None) -> Path:
+        video_ctx: VideoContext | None = None, continuous: bool = False) -> Path:
     """Render video.mp4. With `scene_audio` (one WAV per scene) timing comes from the audio."""
     from . import voice
 
     workdir.mkdir(parents=True, exist_ok=True)
-    durations = [voice.wav_duration(p) + PAD for p in scene_audio] if scene_audio else None
+    # continuous take: scenes are cut from one read, so no extra silence between them (only a beat after the hook)
+    pads = ([HOOK_PAD] + [0.0] * (len(scene_audio) - 1) if continuous else [PAD] * len(scene_audio)) if scene_audio else []
+    durations = [voice.wav_duration(p) + pad for p, pad in zip(scene_audio, pads)] if scene_audio else None
     (workdir / "captions.srt").write_text(to_srt(script, durations))  # plain captions, handy for upload
     ass = workdir / "captions.ass"
     ass.write_text(to_ass(script, durations))
@@ -246,9 +249,9 @@ def run(script: Script, workdir: Path, scene_audio: list[Path] | None = None, re
     audio = None
     if scene_audio:
         padded = []
-        for i, p in enumerate(scene_audio):  # short silence after each scene keeps audio aligned with video
+        for i, (p, pad) in enumerate(zip(scene_audio, pads)):  # silence after a scene keeps audio aligned with video
             q = workdir / f"voicepad_{i:02}.wav"
-            _run(["ffmpeg", "-y", "-i", str(p), "-af", f"apad=pad_dur={PAD}", "-ar", "24000", "-ac", "1", str(q)])
+            _run(["ffmpeg", "-y", "-i", str(p), "-af", f"apad=pad_dur={pad}", "-ar", "24000", "-ac", "1", str(q)])
             padded.append(q)
         audio = voice.concat_audio(padded, workdir / "voice.m4a")
     out = workdir / "video.mp4"

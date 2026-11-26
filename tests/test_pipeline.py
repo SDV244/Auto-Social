@@ -135,3 +135,18 @@ def test_video_context_billing_and_cap():
 
     with pytest.raises(ValueError):  # unknown model price must never be guessed
         visuals.ai_video_clip("x", 4, __import__("pathlib").Path("/tmp/x.mp4"), model="unknown/model")
+
+
+def test_continuous_take_boundaries_snap_to_pauses():
+    from auto_social.stages import voice
+
+    texts = ["a" * 40, "b" * 40, "c" * 40]           # equal thirds of a 12 s take
+    # nearest pause to the expected cuts (4.0 and 8.0) wins; far pauses are ignored
+    assert voice.boundaries(texts, 12.0, [(1.0, 0.5), (4.4, 0.5), (7.7, 0.5), (11.0, 0.5)]) == [4.4, 7.7]
+    # a long sentence pause is preferred over a nearer short comma pause
+    assert voice.boundaries(texts, 12.0, [(3.9, 0.12), (4.9, 0.65), (7.9, 0.5)]) == [4.9, 7.9]
+    # no pause nearby -> proportional fallback; cuts stay strictly increasing
+    cuts = voice.boundaries(texts, 12.0, [])
+    assert cuts == [4.0, 8.0]
+    assert voice._similar(voice._norm("Stop collecting AI tools."), voice._norm("stop collecting ai tools")) == 1.0
+    assert voice._similar(voice._norm("Stop collecting AI tools."), voice._norm("Start something else entirely")) < 0.5

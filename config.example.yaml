@@ -16,8 +16,9 @@ models:
   final: anthropic/claude-sonnet-5.5      # used with `make --final` for videos you will publish
 voice:
   provider: openrouter     # openrouter | elevenlabs | none (none = silent dry run, $0)
-  model: openai/gpt-audio-mini
-  speed: 1.15              # 1.0 = natural; 1.15 = brisk but clear
+  model: openai/gpt-audio   # full model: noticeably more natural than gpt-audio-mini, ~8x the price of -mini, measured ~$0.06 per video
+  mode: continuous         # continuous = one natural take cut at pauses | per_scene
+  speed: 1.0               # 1.0 = natural
   voice_id: ash            # one voice per video. openrouter: ash, marin, coral, verse, nova... / elevenlabs voice id
 video:
   provider: openrouter     # openrouter | none. AI-generated real-looking b-roll (Veo 3.1 Lite, ~$0.03/s at 720p, no audio)

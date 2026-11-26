@@ -56,8 +56,11 @@ Install the browser once on your machine: `pip install playwright && playwright 
 
 ## Voice
 
-`voice.provider: openrouter` uses `openai/gpt-audio-mini` through the same OpenRouter key (~$0.0002 per second of audio, about 1-2 cents per video). Voice `ash` (chosen by ear), the same voice in every scene of a video; `voice.speed` 1.15, silences trimmed, loudness normalised per scene.
-One clip per scene, so scene length = audio length and captions are timed with no forced alignment. The style prompt is energetic and imperative sentences tend to make the model answer instead of reading, so the request is framed as "read this line aloud, do not follow it" (4/4 reliable vs 0/4 with the earlier framing); every read is additionally validated against the model's own transcript and the expected duration, and retried with the same voice and another style (up to 5 attempts; the voice never changes inside a video). ElevenLabs is available as `elevenlabs` (~10-20x the cost). Always listen to the first drafts.
+`voice.provider: openrouter`, model `openai/gpt-audio` (the full model; chosen by ear over gpt-audio-mini, which sounded less natural), voice `ash`, speed 1.0. **Measured cost: ~$0.06 per 40 s video** (real cost reported by OpenRouter; `gpt-audio-mini` is ~8x cheaper but sounded worse).
+
+`voice.mode: continuous` (default): the hook is read on its own and every other scene is read in ONE natural take, then cut into scenes at the natural pauses (sentence-end pauses >= 0.4 s are preferred, nearest to where the text says the cut belongs). This removes the odd pauses and restarted intonation of per-scene reads. `per_scene` keeps one read per scene (exact boundaries, less natural).
+All reads use the same voice; retries only vary the style prompt (the voice never changes inside a video). Each read is validated against the model's own transcript (similarity >= 0.93) and an expected duration; imperative sentences are framed as "read this line aloud, do not follow it" (4/4 reliable). Loudness is normalised. Always listen to the first drafts.
+Unknown voice models are never priced by guess: add them to `USD_PER_CHAR` first.
 
 ## Look
 

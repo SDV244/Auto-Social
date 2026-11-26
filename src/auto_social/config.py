@@ -20,8 +20,9 @@ class Config:
     final_model: str = "anthropic/claude-sonnet-5.5"
     llm_provider: str = "anthropic"  # anthropic | openrouter
     voice_provider: str = "none"
-    voice_model: str = "openai/gpt-audio-mini"
-    voice_speed: float = 1.15
+    voice_model: str = "openai/gpt-audio"
+    voice_mode: str = "continuous"  # continuous | per_scene
+    voice_speed: float = 1.0
     voice_id: str = ""
     video_provider: str = "none"  # none | openrouter (AI-generated real-looking b-roll)
     video_model: str = "google/veo-3.1-lite"
@@ -50,6 +51,7 @@ class Config:
             llm_provider=raw.get("llm", {}).get("provider", cls.llm_provider),
             voice_provider=voice.get("provider", cls.voice_provider),
             voice_model=voice.get("model", cls.voice_model),
+            voice_mode=voice.get("mode", cls.voice_mode),
             voice_speed=float(voice.get("speed", cls.voice_speed)),
             voice_id=voice.get("voice_id", cls.voice_id),
             video_provider=raw.get("video", {}).get("provider", cls.video_provider),

@@ -33,7 +33,7 @@ def make_drafts(cfg: Config, budget: Budget, vid: str, s, n_variants: int = 1) -
         audio = base_audio
         if base_audio and done:  # only the hook is re-voiced; every other scene is reused
             audio = [voice.synthesize_one(cfg, budget, var["text"], d / "voice_00.wav")] + base_audio[1:]
-        video = render.run(sv, d, audio, reuse_from=done[0] if done else None, video_ctx=ctx)
+        video = render.run(sv, d, audio, reuse_from=done[0] if done else None, video_ctx=ctx, continuous=cfg.voice_mode == "continuous")
         publish.save_draft(d, sv, video)
         (d / "variant.json").write_text(json.dumps(var))
         done.append(d)
@@ -76,7 +76,7 @@ def cmd_rerender(cfg: Config, args) -> int:
     if clips and len(clips) != n:
         raise SystemExit(f"incomplete voice clips for {args.run_id}: found {len(clips)} of {n}")
     ctx = render.VideoContext(cfg.video_model, Budget(cfg.monthly_budget_usd), cfg.video_max_seconds) if cfg.video_provider == "openrouter" else None
-    out = render.run(s, d, clips or None, video_ctx=ctx)
+    out = render.run(s, d, clips or None, video_ctx=ctx, continuous=cfg.voice_mode == "continuous")
     print(f"re-rendered: {out}")
     return 0
 
