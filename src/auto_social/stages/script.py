@@ -1,0 +1,70 @@
+"""Turn a reference transcript into an ORIGINAL short script using Claude.
+
+The prompt forbids copying and forces a distinct angle, which is also what keeps the
+channel clear of YouTube's "inauthentic / repetitive content" demonetization.
+"""
+from __future__ import annotations
+
+import json
+import re
+
+from ..budget import Budget
+from ..config import Config
+from ..models import Beat, Script, Video
+
+SYSTEM = """You write 45-60 second faceless short-form video scripts for the niche: {niche}.
+Audience: {market} viewers, language: {language}.
+
+Rules:
+- You receive a transcript of a video that is performing well. Use it ONLY to learn the topic and why it works (hook, pacing, structure). Never reuse its wording, examples or sequence.
+- Add a distinct angle the source does not have (a concrete workflow, a comparison, a mistake to avoid, a number you can justify). State that angle in "angle".
+- Do not invent facts, prices, features or statistics. If unsure, leave them out.
+- 6-9 short beats. Each beat: voiceover (<= 25 words), on_screen_text (<= 6 words), visual (what a screen recording or stock clip should show).
+- Hook in the first sentence, under 15 words, no clickbait that the video does not pay off.
+Return ONLY JSON: {{"title","hook","angle","beats":[{{"voiceover","on_screen_text","visual"}}],"cta"}}"""
+
+# Rough Sonnet-class pricing used only for the budget guard (USD per million tokens).
+IN_PER_M, OUT_PER_M = 3.0, 15.0
+
+
+def build_user_prompt(video: Video, transcript: str, max_chars: int = 12000) -> str:
+    return (
+        f"Reference video: {video.title} ({video.views:,} views, {video.age_days:.0f} days old)\n\n"
+        f"Transcript:\n{transcript[:max_chars]}"
+    )
+
+
+def parse_script(raw: str, cfg: Config) -> Script:
+    m = re.search(r"\{.*\}", raw, re.S)
+    if not m:
+        raise ValueError("model returned no JSON object")
+    d = json.loads(m.group(0))
+    beats = [Beat(**{k: b.get(k, "") for k in ("voiceover", "on_screen_text", "visual")}) for b in d["beats"]]
+    if not 4 <= len(beats) <= 12:
+        raise ValueError(f"unexpected number of beats: {len(beats)}")
+    return Script(
+        title=d["title"],
+        hook=d["hook"],
+        angle=d.get("angle", ""),
+        beats=beats,
+        cta=d.get("cta") or cfg.affiliate_cta,
+        disclosure=cfg.disclosure,
+    )
+
+
+def run(cfg: Config, budget: Budget, video: Video, transcript: str, client=None) -> Script:
+    import anthropic
+
+    client = client or anthropic.Anthropic()
+    system = SYSTEM.format(niche=cfg.niche, market=cfg.market, language=cfg.language)
+    user = build_user_prompt(video, transcript)
+    est = (len(system) + len(user)) / 4 / 1e6 * IN_PER_M + 1500 / 1e6 * OUT_PER_M
+    budget.charge(est, "script generation")
+    msg = client.messages.create(
+        model=cfg.script_model,
+        max_tokens=1500,
+        # cache_control keeps the fixed instructions cheap across the daily batch
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": user}],
+    )
+    return parse_script(msg.content[0].text, cfg)
