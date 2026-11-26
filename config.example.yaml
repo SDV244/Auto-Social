@@ -9,8 +9,10 @@ max_candidates: 25         # videos pulled per query
 max_age_days: 21           # only recent videos
 min_views: 20000
 monthly_budget_usd: 100    # hard cap; stages refuse to run beyond it
+llm:
+  provider: openrouter     # openrouter | anthropic
 models:
-  script: claude-sonnet-5-5
+  script: anthropic/claude-sonnet-5.5   # OpenRouter id. For provider=anthropic use claude-sonnet-5-5
 voice:
   provider: none           # none | elevenlabs  (none = dry run, no cost)
   voice_id: ""

@@ -37,10 +37,14 @@ Each draft folder holds `video.mp4`, `captions.srt`, `script.json`, `caption.txt
 
 ## Status
 
-Verified here: unit tests, SRT generation, ffmpeg rendering of a 1080x1920 video.
-**Not verified yet:** live YouTube search/captions (the build sandbox blocks YouTube), the ElevenLabs call, and a real Claude script run. Run `research` and `make` once on your machine and check the output before relying on them.
+Verified end to end (cloud sandbox, 2026-11): live YouTube search, caption download (12.7k chars from a real video), script generation through **OpenRouter** (`anthropic/claude-sonnet-5.5`, ~$0.06 per script, 8 beats with a distinct angle) and ffmpeg render of a 1080x1920 video.
 
-Placeholder visuals: the renderer uses a plain background. Next step is screen-recording clips per beat (the `visual` field already says what to show).
+Known limits:
+- From datacenter IPs YouTube refuses per-video detail lookups ("confirm you're not a bot"), so upload age can be unknown; ranking then falls back to views/90 days. On a home connection age resolves normally.
+- Not verified: ElevenLabs voice, Postiz publishing.
+- Renderer still uses a plain background; real screen-recording visuals are next.
+
+LLM provider: `llm.provider: openrouter` (set `OPENROUTER_API_KEY`, use a dedicated key with a spend limit) or `anthropic`.
 
 ## Roadmap
 

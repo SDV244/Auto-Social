@@ -29,6 +29,7 @@ def from_captions(url: str, lang: str = "en") -> str | None:
     with tempfile.TemporaryDirectory() as tmp:
         opts = {
             "quiet": True,
+            "no_warnings": True,
             "skip_download": True,
             "writeautomaticsub": True,
             "writesubtitles": True,

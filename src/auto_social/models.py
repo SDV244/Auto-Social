@@ -10,7 +10,7 @@ class Video:
     url: str
     channel: str
     views: int
-    age_days: float
+    age_days: float  # -1 = unknown
     duration_s: int = 0
     velocity: float = 0.0  # views per day, computed by research.rank
 

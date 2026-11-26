@@ -24,7 +24,7 @@ Rules:
 Return ONLY JSON: {{"title","hook","angle","beats":[{{"voiceover","on_screen_text","visual"}}],"cta"}}"""
 
 # Rough Sonnet-class pricing used only for the budget guard (USD per million tokens).
-IN_PER_M, OUT_PER_M = 3.0, 15.0
+IN_PER_M, OUT_PER_M = 2.0, 10.0
 
 
 def build_user_prompt(video: Video, transcript: str, max_chars: int = 12000) -> str:
@@ -52,19 +52,60 @@ def parse_script(raw: str, cfg: Config) -> Script:
     )
 
 
-def run(cfg: Config, budget: Budget, video: Video, transcript: str, client=None) -> Script:
+def _call_openrouter(cfg: Config, system: str, user: str) -> str:
+    """OpenAI-compatible endpoint. Lets one key reach many models and cap spend per key."""
+    import os
+
+    import httpx
+
+    headers = {"Content-Type": "application/json"}
+    if os.environ.get("OPENROUTER_API_KEY"):  # in the cloud sandbox the proxy injects the key instead
+        headers["Authorization"] = f"Bearer {os.environ['OPENROUTER_API_KEY']}"
+    r = httpx.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": cfg.script_model,
+            "max_tokens": 3500,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        },
+        timeout=120,
+    )
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
+def _call_anthropic(cfg: Config, system: str, user: str, client=None) -> str:
     import anthropic
 
     client = client or anthropic.Anthropic()
-    system = SYSTEM.format(niche=cfg.niche, market=cfg.market, language=cfg.language)
-    user = build_user_prompt(video, transcript)
-    est = (len(system) + len(user)) / 4 / 1e6 * IN_PER_M + 1500 / 1e6 * OUT_PER_M
-    budget.charge(est, "script generation")
     msg = client.messages.create(
         model=cfg.script_model,
-        max_tokens=1500,
+        max_tokens=3500,
         # cache_control keeps the fixed instructions cheap across the daily batch
         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user}],
     )
-    return parse_script(msg.content[0].text, cfg)
+    return msg.content[0].text
+
+
+def run(cfg: Config, budget: Budget, video: Video, transcript: str, client=None) -> Script:
+    system = SYSTEM.format(niche=cfg.niche, market=cfg.market, language=cfg.language)
+    user = build_user_prompt(video, transcript)
+    est = (len(system) + len(user)) / 4 / 1e6 * IN_PER_M + 3500 / 1e6 * OUT_PER_M
+    budget.charge(est, "script generation")
+    if cfg.llm_provider not in ("openrouter", "anthropic"):
+        raise ValueError(f"unknown llm provider: {cfg.llm_provider}")
+    last: Exception | None = None
+    for _ in range(2):  # one retry if the model returns malformed/truncated JSON
+        raw = (
+            _call_openrouter(cfg, system, user)
+            if cfg.llm_provider == "openrouter"
+            else _call_anthropic(cfg, system, user, client)
+        )
+        try:
+            return parse_script(raw, cfg)
+        except (ValueError, KeyError) as e:  # JSONDecodeError is a ValueError
+            last = e
+            budget.charge(est, "script retry")
+    raise RuntimeError(f"model returned an unusable script twice: {last}")
