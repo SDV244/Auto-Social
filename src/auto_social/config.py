@@ -25,7 +25,7 @@ class Config:
     voice_id: str = ""
     video_provider: str = "none"  # none | openrouter (AI-generated real-looking b-roll)
     video_model: str = "google/veo-3.1-lite"
-    video_max_seconds: int = 14   # billed seconds of generated video per finished video
+    video_max_seconds: int = 18   # billed seconds of generated video per finished video
     publish_provider: str = "outbox"
     affiliate_cta: str = ""
     disclosure: str = "AI-assisted video."

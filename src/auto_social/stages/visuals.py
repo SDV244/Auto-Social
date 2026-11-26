@@ -28,7 +28,7 @@ def looks_blocked(title: str, body_text: str) -> bool:
 
 CARD_HTML = """<html><body style="margin:0;width:{w}px;height:{h}px;display:flex;align-items:center;justify-content:center;
 background:linear-gradient(160deg,#101820 0%,#1b2a41 60%,#0f4c5c 100%);font-family:Inter,Helvetica,Arial,sans-serif">
-<div style="color:#fff;font-size:{size}px;font-weight:800;line-height:1.15;text-align:center;padding:0 90px;
+<div style="color:#fff;font-size:{size}px;font-weight:800;line-height:1.15;text-align:center;padding:0 90px 360px 90px;box-sizing:border-box;width:100%;
 text-shadow:0 6px 30px rgba(0,0,0,.45)">{text}</div></body></html>"""
 
 
@@ -43,7 +43,7 @@ def _launch(p):
 def card_png(text: str, out: Path) -> Path:
     from playwright.sync_api import sync_playwright
 
-    size = 120 if len(text) < 40 else 92 if len(text) < 90 else 72
+    size = 120 if len(text) < 40 else 92 if len(text) < 90 else 72 if len(text) < 150 else 54
     with sync_playwright() as p:
         browser = _launch(p)
         page = browser.new_page(viewport={"width": W, "height": H})

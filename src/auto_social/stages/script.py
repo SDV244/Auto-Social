@@ -27,7 +27,7 @@ STRUCTURE (retention-first, in this order):
  2. PAYOFF FIRST: the first beat SHOWS the result (a "demo" beat) before explaining it.
  3. 3-5 short beats that explain how, one idea each.
  4. RE-HOOK around the middle: one beat that opens a new loop ("but here is the part most people skip").
- 5. CLOSE: a save-worthy takeaway (the exact prompt, checklist or rule to copy) in "save_text" (<= 40 words, short lines separated by \\n),
+ 5. CLOSE: a save-worthy takeaway (the exact prompt, checklist or rule to copy) in "save_text" (<= 30 words, short lines separated by \\n),
     and a "cta" (<= 12 words) that says to save it and ties back to the hook so the video loops.
 - Each beat: voiceover (<= 22 words), on_screen_text (<= 6 words), visual (one-line description of the shot),
   visual_type and visual_ref:

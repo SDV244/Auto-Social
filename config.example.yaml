@@ -22,7 +22,7 @@ voice:
 video:
   provider: openrouter     # openrouter | none. AI-generated real-looking b-roll (Veo 3.1 Lite, ~$0.03/s at 720p, no audio)
   model: google/veo-3.1-lite
-  max_seconds: 14          # billed seconds per finished video (~$0.42 max); beyond that scenes fall back to cards
+  max_seconds: 18          # billed seconds per finished video (~$0.54 max); beyond that scenes fall back to cards
 publish:
   provider: outbox         # outbox = local approval queue (default). postiz = see README
 affiliate_cta: "Link in bio for the tool I use"   # replace with real tracked links
