@@ -54,6 +54,8 @@ def timings(script: Script, durations: list[float] | None = None) -> list[tuple[
     """Scene timings: real audio durations when given, else estimated from word counts."""
     if not durations:
         return beat_timings(script)
+    if len(durations) != len(script.beats) + 2:
+        raise ValueError(f"expected {len(script.beats) + 2} scene durations, got {len(durations)}")
     texts = [script.hook] + [b.voiceover for b in script.beats] + [script.cta]
     t, out = 0.0, []
     for text, d in zip(texts, durations):
@@ -174,16 +176,20 @@ def _video_clip(src: Path, dur: float, out: Path) -> None:
 
 
 def _ai_video(sc: dict, ctx: VideoContext, out: Path) -> Path | None:
-    """Generate (or fetch from cache) an AI clip for this scene, within the per-video seconds cap."""
+    """Generate (or reuse from cache) an AI clip for this scene, within the per-video seconds cap.
+
+    Cache key = model + shot description. A cached clip is reused whenever it is at least as long as
+    the scene needs, so hook variants of different length do not pay for the same shot twice.
+    """
     secs = ctx.billed(sc["duration"])
-    key = hashlib.sha1(f"{ctx.model}|{secs}|{sc['ref']}".encode()).hexdigest()[:16]
-    cached = CACHE / f"{key}.mp4"
-    if cached.exists():
-        return cached
+    key = hashlib.sha1(f"{ctx.model}|{sc['ref']}".encode()).hexdigest()[:16]
+    for cached in sorted(CACHE.glob(f"{key}_*s.mp4")):
+        if int(cached.stem.rsplit("_", 1)[1].rstrip("s")) >= secs:
+            return cached
     if ctx.used + secs > ctx.max_seconds:
         return None  # over the cap: the caller falls back to a text card
     CACHE.mkdir(parents=True, exist_ok=True)
-    clip = visuals.ai_video_clip(sc["ref"], secs, cached, ctx.model, ctx.budget)
+    clip = visuals.ai_video_clip(sc["ref"], secs, CACHE / f"{key}_{secs}s.mp4", ctx.model, ctx.budget)
     if clip:
         ctx.used += secs
     return clip

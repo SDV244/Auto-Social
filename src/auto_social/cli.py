@@ -69,7 +69,12 @@ def cmd_rerender(cfg: Config, args) -> int:
 
     d = RUNS / args.run_id
     s = script_from_dict(json.loads((d / "script.json").read_text()))
-    clips = sorted(d.glob("voicefast_*.wav"))
+    n = len(voice.scene_texts(s))
+    base = RUNS / (args.run_id.rsplit("_", 1)[0] + "_A") if args.run_id[-2:-1] == "_" else d
+    # variants only store their own hook audio; every other scene's voice lives in the first variant
+    clips = [p for p in ((d if (d / f"voicefast_{i:02}.wav").exists() else base) / f"voicefast_{i:02}.wav" for i in range(n)) if p.exists()]
+    if clips and len(clips) != n:
+        raise SystemExit(f"incomplete voice clips for {args.run_id}: found {len(clips)} of {n}")
     ctx = render.VideoContext(cfg.video_model, Budget(cfg.monthly_budget_usd), cfg.video_max_seconds) if cfg.video_provider == "openrouter" else None
     out = render.run(s, d, clips or None, video_ctx=ctx)
     print(f"re-rendered: {out}")
