@@ -35,11 +35,13 @@ STRUCTURE (retention-first, in this order):
       "demo_output" = a concrete example answer (<= 45 words, short lines separated by \\n). It is an illustrative example,
       so write something genuinely useful and accurate.
     "screen": a screen recording of a real public web page. visual_ref = full https URL of the tool's public page. Only when a beat names a specific tool.
-    "stock": generic b-roll. visual_ref = a 2-4 word search query.
+    "video": real-looking AI-generated b-roll. visual_ref = ONE sentence describing the shot (subject, setting, camera move, lighting).
+      Realistic and generic: no text, no logos, no brands, no recognisable faces, no screens that need readable content. Hands, desks, rooms, cities, objects work best.
     "card": a clean text card for rules, comparisons and takeaways. visual_ref = "".
-  Use 2 "demo" beats (the first one is the payoff), at most 1 "screen" beat, the rest "card"/"stock". Never invent URLs you are not sure exist.
+  Use 2 "demo" beats (the first one is the payoff), at most 1 "screen" beat, 2-3 "video" beats, the rest "card".
+  Also give "hook_visual": one sentence describing a realistic video background for the hook (same rules as "video"). Never invent URLs you are not sure exist.
 - Total spoken words (hook + beats + cta) must be 75-100, so the video runs about 30-40 seconds. Every beat under 7 seconds spoken.
-Return ONLY JSON: {{"title","hook","hook_variants":[{{"style","text"}}],"angle","beats":[{{"voiceover","on_screen_text","visual","visual_type","visual_ref","demo_output"}}],"save_text","cta"}}"""
+Return ONLY JSON: {{"title","hook","hook_visual","hook_variants":[{{"style","text"}}],"angle","beats":[{{"voiceover","on_screen_text","visual","visual_type","visual_ref","demo_output"}}],"save_text","cta"}}"""
 
 # Rough Sonnet-class pricing used only for the budget guard (USD per million tokens).
 IN_PER_M, OUT_PER_M = 2.0, 10.0
@@ -66,7 +68,9 @@ def parse_script(raw: str, cfg: Config) -> Script:
         demo_out = b.get("demo_output", "") or ""
         if vt == "demo" and not (ref and demo_out):
             vt, ref, demo_out = "card", "", ""
-        if vt not in ("card", "screen", "stock", "demo"):
+        if vt == "stock":  # legacy alias
+            vt = "video"
+        if vt not in ("card", "screen", "video", "demo"):
             vt, ref, demo_out = "card", "", ""
         beats.append(Beat(b.get("voiceover", ""), b.get("on_screen_text", ""), b.get("visual", ""), vt, ref, demo_out))
     if not 4 <= len(beats) <= 12:
@@ -88,6 +92,7 @@ def parse_script(raw: str, cfg: Config) -> Script:
         hook=hook,
         hook_variants=variants,
         save_text=str(d.get("save_text", "") or ""),
+        hook_visual=str(d.get("hook_visual", "") or ""),
         angle=d.get("angle", ""),
         beats=beats,
         cta=d.get("cta") or cfg.affiliate_cta,

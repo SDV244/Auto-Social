@@ -1,18 +1,34 @@
 """Scene-based renderer: one clip per scene (hook, beats, cta), concatenated with audio + captions.
 
-Each scene uses its beat's visual (screen recording / stock / text card); anything that
+Each scene uses its beat's visual (AI video clip / screen recording / demo / text card); anything that
 fails or is not configured degrades to a text card, so a render always completes.
 """
 from __future__ import annotations
 
+import hashlib
+import math
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..models import Script
 from . import visuals
 
 FPS = 30
+CACHE = Path("assets/cache")
+
+
+@dataclass
+class VideoContext:
+    """Paid AI-video generation settings for one render; `used` counts billed seconds."""
+    model: str
+    budget: object
+    max_seconds: int = 14
+    used: int = 0
+
+    def billed(self, duration: float) -> int:
+        return next((s for s in (4, 6, 8) if s >= duration), 8)  # Veo bills 4/6/8 s clips
 PAD = 0.08  # seconds of silence after each scene; keeps cuts snappy
 
 
@@ -83,6 +99,7 @@ WrapStyle: 2
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
 Style: Cap,Inter,86,&H0000E5FF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,9,0,2,60,60,430,1
+Style: Title,Inter,80,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,8,2,8,70,70,260,1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
@@ -119,12 +136,16 @@ def to_ass(script: Script, durations: list[float] | None = None, words_per_line:
             pop = "{\\fscx82\\fscy82\\t(0,110,\\fscx100\\fscy100)}"
             lines.append(f"Dialogue: 0,{_ass_time(t)},{_ass_time(t + gd)},Cap,,0,0,0,,{pop}{ks}")
             t += gd
+    for sc in scenes(script, durations):  # headline over AI-video scenes (cards already show their own text)
+        if sc["type"] == "video" and sc["text"].strip():
+            a = sc["start"]
+            lines.append(f"Dialogue: 1,{_ass_time(a)},{_ass_time(a + sc['duration'])},Title,,0,0,0,,{{\\fad(120,0)}}{sc['text']}")
     return ASS_HEADER + "\n".join(lines) + "\n"
 
 
 def scenes(script: Script, durations: list[float] | None = None) -> list[dict]:
     """Scene list aligned with beat_timings: hook, each beat, cta."""
-    items = [{"type": "card", "ref": "", "text": script.hook}]
+    items = [{"type": "video" if script.hook_visual else "card", "ref": script.hook_visual, "text": script.hook, "output": ""}]
     for b in script.beats:
         items.append({"type": b.visual_type, "ref": b.visual_ref, "text": b.on_screen_text or b.voiceover,
                       "output": b.demo_output})
@@ -132,6 +153,7 @@ def scenes(script: Script, durations: list[float] | None = None) -> list[dict]:
     items.append({"type": "card", "ref": "", "text": f"SAVE THIS\n{save}" if save else script.cta})
     for it, (a, b, _) in zip(items, timings(script, durations)):
         it["duration"] = b - a
+        it["start"] = a
     return items
 
 
@@ -151,7 +173,24 @@ def _video_clip(src: Path, dur: float, out: Path) -> None:
     _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf, "-t", f"{dur:.2f}", "-an", "-c:v", "libx264", str(out)])
 
 
-def build_clips(script: Script, workdir: Path, durations: list[float] | None = None, reuse_from: Path | None = None) -> list[Path]:
+def _ai_video(sc: dict, ctx: VideoContext, out: Path) -> Path | None:
+    """Generate (or fetch from cache) an AI clip for this scene, within the per-video seconds cap."""
+    secs = ctx.billed(sc["duration"])
+    key = hashlib.sha1(f"{ctx.model}|{secs}|{sc['ref']}".encode()).hexdigest()[:16]
+    cached = CACHE / f"{key}.mp4"
+    if cached.exists():
+        return cached
+    if ctx.used + secs > ctx.max_seconds:
+        return None  # over the cap: the caller falls back to a text card
+    CACHE.mkdir(parents=True, exist_ok=True)
+    clip = visuals.ai_video_clip(sc["ref"], secs, cached, ctx.model, ctx.budget)
+    if clip:
+        ctx.used += secs
+    return clip
+
+
+def build_clips(script: Script, workdir: Path, durations: list[float] | None = None, reuse_from: Path | None = None,
+                video_ctx: VideoContext | None = None) -> list[Path]:
     """`reuse_from`: a previous render of the same script; scenes after the hook are copied, not rebuilt."""
     clips = []
     for i, sc in enumerate(scenes(script, durations)):
@@ -165,8 +204,8 @@ def build_clips(script: Script, workdir: Path, durations: list[float] | None = N
             raw = visuals.screen_clip(sc["ref"], sc["duration"], workdir / f"scene_{i:02}_screen.mp4")
         elif sc["type"] == "demo":
             raw = visuals.demo_clip(sc["ref"], sc["output"], sc["duration"], workdir / f"scene_{i:02}_demo.mp4")
-        elif sc["type"] == "stock":
-            raw = visuals.stock_clip(sc["ref"], sc["duration"], workdir / f"scene_{i:02}_stock.mp4")
+        elif sc["type"] == "video" and video_ctx and sc["ref"]:
+            raw = _ai_video(sc, video_ctx, workdir / f"scene_{i:02}_ai.mp4")
         if raw:
             _video_clip(raw, sc["duration"], out)
         else:
@@ -185,7 +224,8 @@ def final_command(concat_list: Path, ass: Path, out: Path, audio: Path | None = 
     return cmd + [str(out)]
 
 
-def run(script: Script, workdir: Path, scene_audio: list[Path] | None = None, reuse_from: Path | None = None) -> Path:
+def run(script: Script, workdir: Path, scene_audio: list[Path] | None = None, reuse_from: Path | None = None,
+        video_ctx: VideoContext | None = None) -> Path:
     """Render video.mp4. With `scene_audio` (one WAV per scene) timing comes from the audio."""
     from . import voice
 
@@ -194,7 +234,7 @@ def run(script: Script, workdir: Path, scene_audio: list[Path] | None = None, re
     (workdir / "captions.srt").write_text(to_srt(script, durations))  # plain captions, handy for upload
     ass = workdir / "captions.ass"
     ass.write_text(to_ass(script, durations))
-    clips = build_clips(script, workdir, durations, reuse_from)
+    clips = build_clips(script, workdir, durations, reuse_from, video_ctx)
     concat = workdir / "scenes.txt"
     concat.write_text("".join(f"file '{c.resolve()}'\n" for c in clips))
     audio = None

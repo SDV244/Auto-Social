@@ -75,7 +75,7 @@ def test_visual_types_are_validated_and_scenes_align():
         {"voiceover": "j k l", "visual_type": "stock", "visual_ref": "person typing"},
     ]
     s = script_stage.parse_script(json.dumps(bad), Config(affiliate_cta="cta"))
-    assert [b.visual_type for b in s.beats] == ["card", "screen", "card", "stock"]
+    assert [b.visual_type for b in s.beats] == ["card", "screen", "card", "video"]  # legacy "stock" -> "video"
     sc = render.scenes(s)
     assert len(sc) == len(s.beats) + 2 == len(render.beat_timings(s))  # hook + beats + cta
     assert all(x["duration"] > 0 for x in sc)
@@ -126,3 +126,12 @@ def test_structure_problems_flags_missing_payoff_and_invented_numbers():
         {"voiceover": "b c", "visual_type": "card"}
     ] * 3
     assert script_stage.structure_problems(script_stage.parse_script(json.dumps(d), Config()), "3 tools") == []
+
+
+def test_video_context_billing_and_cap():
+    ctx = render.VideoContext("google/veo-3.1-lite", None, max_seconds=14)
+    assert [ctx.billed(d) for d in (2.0, 4.0, 4.1, 6.5, 12)] == [4, 4, 6, 8, 8]
+    from auto_social.stages import visuals
+
+    with pytest.raises(ValueError):  # unknown model price must never be guessed
+        visuals.ai_video_clip("x", 4, __import__("pathlib").Path("/tmp/x.mp4"), model="unknown/model")

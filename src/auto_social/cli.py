@@ -25,6 +25,7 @@ def make_drafts(cfg: Config, budget: Budget, vid: str, s, n_variants: int = 1) -
     s = dataclasses.replace(s, hook=variants[0]["text"])
     multi = len(variants) > 1
     dirs = [RUNS / (f"{vid}_{'ABC'[k]}" if multi else vid) for k in range(len(variants))]
+    ctx = render.VideoContext(cfg.video_model, budget, cfg.video_max_seconds) if cfg.video_provider == "openrouter" else None
     base_audio = voice.synthesize_scenes(cfg, budget, s, dirs[0])
     done: list[Path] = []
     for d, var in zip(dirs, variants):
@@ -32,7 +33,7 @@ def make_drafts(cfg: Config, budget: Budget, vid: str, s, n_variants: int = 1) -
         audio = base_audio
         if base_audio and done:  # only the hook is re-voiced; every other scene is reused
             audio = [voice.synthesize_one(cfg, budget, var["text"], d / "voice_00.wav")] + base_audio[1:]
-        video = render.run(sv, d, audio, reuse_from=done[0] if done else None)
+        video = render.run(sv, d, audio, reuse_from=done[0] if done else None, video_ctx=ctx)
         publish.save_draft(d, sv, video)
         (d / "variant.json").write_text(json.dumps(var))
         done.append(d)
@@ -69,7 +70,8 @@ def cmd_rerender(cfg: Config, args) -> int:
     d = RUNS / args.run_id
     s = script_from_dict(json.loads((d / "script.json").read_text()))
     clips = sorted(d.glob("voicefast_*.wav"))
-    out = render.run(s, d, clips or None)
+    ctx = render.VideoContext(cfg.video_model, Budget(cfg.monthly_budget_usd), cfg.video_max_seconds) if cfg.video_provider == "openrouter" else None
+    out = render.run(s, d, clips or None, video_ctx=ctx)
     print(f"re-rendered: {out}")
     return 0
 

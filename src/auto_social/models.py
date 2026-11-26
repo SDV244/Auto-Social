@@ -34,6 +34,7 @@ class Script:
     disclosure: str
     angle: str = ""  # the original take that makes this not a copy
     hook_variants: list[dict] = field(default_factory=list)  # [{"style","text"}] for A/B tests
+    hook_visual: str = ""  # one-sentence shot description for a video background behind the hook
     save_text: str = ""  # the prompt/checklist shown on the closing card (save-worthy)
 
     def voiceover_text(self) -> str:

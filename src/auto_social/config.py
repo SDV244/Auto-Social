@@ -23,6 +23,9 @@ class Config:
     voice_model: str = "openai/gpt-audio-mini"
     voice_speed: float = 1.15
     voice_id: str = ""
+    video_provider: str = "none"  # none | openrouter (AI-generated real-looking b-roll)
+    video_model: str = "google/veo-3.1-lite"
+    video_max_seconds: int = 14   # billed seconds of generated video per finished video
     publish_provider: str = "outbox"
     affiliate_cta: str = ""
     disclosure: str = "AI-assisted video."
@@ -49,6 +52,9 @@ class Config:
             voice_model=voice.get("model", cls.voice_model),
             voice_speed=float(voice.get("speed", cls.voice_speed)),
             voice_id=voice.get("voice_id", cls.voice_id),
+            video_provider=raw.get("video", {}).get("provider", cls.video_provider),
+            video_model=raw.get("video", {}).get("model", cls.video_model),
+            video_max_seconds=int(raw.get("video", {}).get("max_seconds", cls.video_max_seconds)),
             publish_provider=publish.get("provider", cls.publish_provider),
             affiliate_cta=raw.get("affiliate_cta", cls.affiliate_cta),
             disclosure=raw.get("disclosure", cls.disclosure),

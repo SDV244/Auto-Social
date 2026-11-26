@@ -148,6 +148,51 @@ def demo_clip(prompt: str, output: str, duration: float, out: Path, fps: int = 1
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# USD per second of generated video at 720p WITHOUT audio, from OpenRouter's published pricing (checked 2026-11).
+AI_VIDEO_USD_PER_SEC = {"google/veo-3.1-lite": 0.03, "alibaba/wan-3.0": 0.10, "minimax/hailuo-3-max": 0.08}
+
+
+def ai_video_clip(prompt: str, seconds: int, out: Path, model: str = "google/veo-3.1-lite", budget=None,
+                  timeout_s: int = 360) -> Path | None:
+    """Generate a real AI video clip through OpenRouter (9:16, 720p, no audio). None on any failure.
+
+    Always sends explicit resolution/duration/audio: defaults can be 5-10x more expensive.
+    """
+    import time
+
+    import httpx
+
+    price = AI_VIDEO_USD_PER_SEC.get(model)
+    if price is None:
+        raise ValueError(f"no known price for {model}; add it to AI_VIDEO_USD_PER_SEC first")
+    if budget is not None:
+        budget.charge(price * seconds, f"ai video ({model}, {seconds}s)")
+    headers = {"Content-Type": "application/json"}
+    if os.environ.get("OPENROUTER_API_KEY"):  # in the cloud sandbox the proxy injects the key
+        headers["Authorization"] = f"Bearer {os.environ['OPENROUTER_API_KEY']}"
+    body = {"model": model, "prompt": prompt, "aspect_ratio": "9:16", "resolution": "720p",
+            "duration": seconds, "generate_audio": False}
+    try:
+        r = httpx.post("https://openrouter.ai/api/v1/videos", json=body, headers=headers, timeout=60)
+        r.raise_for_status()
+        poll = r.json()["polling_url"]
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            time.sleep(8)
+            j = httpx.get(poll, headers=headers, timeout=60).json()
+            if j.get("status") == "completed":
+                url = (j.get("unsigned_urls") or j.get("urls") or [None])[0]
+                data = httpx.get(url, headers=headers, timeout=180, follow_redirects=True)
+                data.raise_for_status()
+                out.write_bytes(data.content)
+                return out
+            if j.get("status") == "failed":
+                return None
+        return None
+    except Exception:
+        return None
+
+
 def stock_clip(query: str, duration: float, out: Path) -> Path | None:
     """Plug a stock provider here (Pixabay API key needed). None = use a card instead."""
     return None
