@@ -20,6 +20,7 @@ class Config:
     final_model: str = "anthropic/claude-sonnet-5.5"
     llm_provider: str = "anthropic"  # anthropic | openrouter
     voice_provider: str = "none"
+    voice_model: str = "openai/gpt-audio-mini"
     voice_id: str = ""
     publish_provider: str = "outbox"
     affiliate_cta: str = ""
@@ -44,6 +45,7 @@ class Config:
             final_model=models.get("final", cls.final_model),
             llm_provider=raw.get("llm", {}).get("provider", cls.llm_provider),
             voice_provider=voice.get("provider", cls.voice_provider),
+            voice_model=voice.get("model", cls.voice_model),
             voice_id=voice.get("voice_id", cls.voice_id),
             publish_provider=publish.get("provider", cls.publish_provider),
             affiliate_cta=raw.get("affiliate_cta", cls.affiliate_cta),

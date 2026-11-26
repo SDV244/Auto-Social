@@ -48,6 +48,10 @@ Every scene (hook, each beat, CTA) gets a visual chosen by the script (`visual_t
 Any failure degrades to a card so a render always completes. Captions are burned in by ffmpeg/libass.
 Install the browser once on your machine: `pip install playwright && playwright install chromium` (or set `PLAYWRIGHT_CHROMIUM_PATH`).
 
+## Voice
+
+`voice.provider: openrouter` (default) uses `openai/gpt-audio-mini` through the same OpenRouter key: measured ~$0.0013 per 6 s of audio, about 1-2 cents per video. One clip is synthesized per scene, so scene length = audio length and captions are timed exactly, with no forced alignment. The model occasionally rambles or pads a clip, so every clip is checked against the expected duration and retried (up to 4 times). ElevenLabs is available as `elevenlabs` (about 10-20x the cost). Always listen to the first drafts before publishing.
+
 ## Models
 
 `models.script` (default `deepseek/deepseek-v4-flash`) writes drafts for fractions of a cent; `make --final` uses `models.final` (`anthropic/claude-sonnet-5.5`). Free OpenRouter models were tested: rate-limited (429) and more generic angles, so they are not the default.
@@ -58,8 +62,8 @@ Verified end to end in the cloud sandbox (2026-11): live YouTube search, caption
 
 Known limits:
 - YouTube rate-limits/bot-checks datacenter IPs (`429`, "confirm you're not a bot"); upload age may be unknown and some caption downloads fail (those videos are skipped). A home connection is much less affected.
-- Captions are timed by word count, not by audio. Word-level sync (faster-whisper on the TTS audio) is next.
-- Not verified: ElevenLabs voice, Postiz publishing, Pixabay stock.
+- Captions are phrases of 3-4 words timed by character share inside each scene (exact scene timing, approximate inside a scene).
+- Not verified: ElevenLabs voice, Postiz publishing, Pixabay stock. Voice quality needs a human listen (I could not hear it).
 - `screen` scenes need the target site reachable; otherwise they become cards.
 
 ## Roadmap

@@ -33,8 +33,8 @@ def cmd_make(cfg: Config, args) -> int:
             continue
         s = script_stage.run(cfg, budget, v, text, final=args.final)
         d = RUNS / v.id
-        audio = voice.synthesize(cfg, budget, s.voiceover_text(), d / "voice.mp3") if cfg.voice_provider != "none" else None
-        video = render.run(s, d, audio)
+        scene_audio = voice.synthesize_scenes(cfg, budget, s, d)
+        video = render.run(s, d, scene_audio)
         publish.save_draft(d, s, video)
         print(f"draft ready: {d}  (spent ${budget.spent():.2f}/${cfg.monthly_budget_usd:.0f})")
         made += 1

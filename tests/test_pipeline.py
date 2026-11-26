@@ -79,3 +79,12 @@ def test_visual_types_are_validated_and_scenes_align():
     sc = render.scenes(s)
     assert len(sc) == len(s.beats) + 2 == len(render.beat_timings(s))  # hook + beats + cta
     assert all(x["duration"] > 0 for x in sc)
+
+
+def test_voice_duration_guard():
+    from auto_social.stages import voice
+
+    short = "Stop wasting time."
+    assert voice.max_plausible_seconds(short) >= 3.0
+    assert voice.max_plausible_seconds("word " * 20) > 20 / 2.3  # allows slower reads
+    assert voice.max_plausible_seconds("word " * 11) < 20.6      # the 20.6 s rambling clip is rejected

@@ -15,8 +15,9 @@ models:
   script: deepseek/deepseek-v4-flash      # drafts: fractions of a cent per script
   final: anthropic/claude-sonnet-5.5      # used with `make --final` for videos you will publish
 voice:
-  provider: none           # none | elevenlabs  (none = dry run, no cost)
-  voice_id: ""
+  provider: openrouter     # openrouter | elevenlabs | none (none = silent dry run, $0)
+  model: openai/gpt-audio-mini
+  voice_id: onyx           # openrouter voices: alloy, onyx, nova, echo, shimmer... / elevenlabs voice id
 publish:
   provider: outbox         # outbox = local approval queue (default). postiz = see README
 affiliate_cta: "Link in bio for the tool I use"   # replace with real tracked links

@@ -25,6 +25,7 @@ Rules:
     "stock": generic b-roll. visual_ref = a 2-4 word search query (e.g. "person typing laptop").
     "card": a clean text card for rules, comparisons and takeaways. visual_ref = "".
   Use at most 3 "screen" beats and prefer "card" when unsure; never invent URLs you are not sure exist.
+- Total spoken words (hook + all beats + cta) must be 90-120, so the video runs about 40-55 seconds.
 - Hook in the first sentence, under 15 words, no clickbait that the video does not pay off.
 Return ONLY JSON: {{"title","hook","angle","beats":[{{"voiceover","on_screen_text","visual","visual_type","visual_ref"}}],"cta"}}"""
 
@@ -85,7 +86,7 @@ def _call_openrouter(cfg: Config, system: str, user: str, model: str | None = No
         timeout=120,
     )
     r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
+    return r.json()["choices"][0]["message"].get("content") or ""  # empty -> retried by the caller
 
 
 def _call_anthropic(cfg: Config, system: str, user: str, client=None, model: str | None = None) -> str:
@@ -99,7 +100,7 @@ def _call_anthropic(cfg: Config, system: str, user: str, client=None, model: str
         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user}],
     )
-    return msg.content[0].text
+    return msg.content[0].text if msg.content else ""
 
 
 def run(cfg: Config, budget: Budget, video: Video, transcript: str, client=None, final: bool = False) -> Script:

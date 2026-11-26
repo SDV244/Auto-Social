@@ -32,20 +32,45 @@ def beat_timings(script: Script, words_per_sec: float = 2.6) -> list[tuple[float
     return out
 
 
-def to_srt(script: Script) -> str:
-    blocks = []
-    for i, (a, b, text) in enumerate(beat_timings(script), 1):
-        blocks.append(f"{i}\n{_ts(a)} --> {_ts(b)}\n{text}\n")
+def timings(script: Script, durations: list[float] | None = None) -> list[tuple[float, float, str]]:
+    """Scene timings: real audio durations when given, else estimated from word counts."""
+    if not durations:
+        return beat_timings(script)
+    texts = [script.hook] + [b.voiceover for b in script.beats] + [script.cta]
+    t, out = 0.0, []
+    for text, d in zip(texts, durations):
+        out.append((t, t + d, text))
+        t += d
+    return out
+
+
+def phrases(text: str, max_words: int = 4) -> list[str]:
+    words = text.split()
+    return [" ".join(words[i : i + max_words]) for i in range(0, len(words), max_words)] or [text]
+
+
+def to_srt(script: Script, durations: list[float] | None = None) -> str:
+    """Short 3-4 word phrases, timed proportionally to character count inside each scene."""
+    blocks, n = [], 0
+    for a, b, text in timings(script, durations):
+        parts = phrases(text)
+        total = sum(len(p) for p in parts) or 1
+        t = a
+        for p in parts:
+            d = (b - a) * len(p) / total
+            n += 1
+            blocks.append(f"{n}\n{_ts(t)} --> {_ts(t + d)}\n{p}\n")
+            t += d
     return "\n".join(blocks)
 
 
-def scenes(script: Script) -> list[dict]:
+def scenes(script: Script, durations: list[float] | None = None) -> list[dict]:
     """Scene list aligned with beat_timings: hook, each beat, cta."""
     items = [{"type": "card", "ref": "", "text": script.title}]
     for b in script.beats:
         items.append({"type": b.visual_type, "ref": b.visual_ref, "text": b.on_screen_text or b.voiceover})
     items.append({"type": "card", "ref": "", "text": script.cta})
-    for it, (a, b, _) in zip(items, beat_timings(script)):
+    for it, (a, b, _) in zip(items, timings(script, durations)):
         it["duration"] = b - a
     return items
 
@@ -65,9 +90,9 @@ def _video_clip(src: Path, dur: float, out: Path) -> None:
     _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf, "-t", f"{dur:.2f}", "-an", "-c:v", "libx264", str(out)])
 
 
-def build_clips(script: Script, workdir: Path) -> list[Path]:
+def build_clips(script: Script, workdir: Path, durations: list[float] | None = None) -> list[Path]:
     clips = []
-    for i, sc in enumerate(scenes(script)):
+    for i, sc in enumerate(scenes(script, durations)):
         out = workdir / f"scene_{i:02}.mp4"
         raw = None
         if sc["type"] == "screen":
@@ -94,13 +119,25 @@ def final_command(concat_list: Path, srt: Path, out: Path, audio: Path | None = 
     return cmd + [str(out)]
 
 
-def run(script: Script, workdir: Path, audio: Path | None = None) -> Path:
+def run(script: Script, workdir: Path, scene_audio: list[Path] | None = None) -> Path:
+    """Render video.mp4. With `scene_audio` (one WAV per scene) timing comes from the audio."""
+    from . import voice
+
     workdir.mkdir(parents=True, exist_ok=True)
+    durations = [voice.wav_duration(p) + 0.2 for p in scene_audio] if scene_audio else None
     srt = workdir / "captions.srt"
-    srt.write_text(to_srt(script))
-    clips = build_clips(script, workdir)
+    srt.write_text(to_srt(script, durations))
+    clips = build_clips(script, workdir, durations)
     concat = workdir / "scenes.txt"
     concat.write_text("".join(f"file '{c.resolve()}'\n" for c in clips))
+    audio = None
+    if scene_audio:
+        padded = []
+        for i, p in enumerate(scene_audio):  # 0.2 s of silence after each scene keeps audio aligned with video
+            q = workdir / f"voicepad_{i:02}.wav"
+            _run(["ffmpeg", "-y", "-i", str(p), "-af", "apad=pad_dur=0.2", "-ar", "24000", "-ac", "1", str(q)])
+            padded.append(q)
+        audio = voice.concat_audio(padded, workdir / "voice.m4a")
     out = workdir / "video.mp4"
     _run(final_command(concat, srt, out, audio))
     return out
