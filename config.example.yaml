@@ -26,7 +26,7 @@ video:
   max_seconds: 18          # billed seconds per finished video (~$0.54 max); beyond that scenes fall back to cards
 publish:
   provider: outbox         # outbox = local approval queue (default). postiz = see README
-affiliate_cta: "Link in bio for the tool I use"   # replace with real tracked links
+affiliate_cta: ""   # add real tracked links ONLY once you have them, e.g. "Tool I use: https://..."
 hashtags: ["#AItools", "#productivity", "#ChatGPT", "#AIworkflow"]   # TikTok/YouTube hashtags (3-5 is plenty)
 post_time: "3:00 PM US Eastern"   # Shorts reportedly peak 2-6 pm; verify with your own analytics
-disclosure: "AI-assisted video. Affiliate links may be included."
+disclosure: "AI-assisted video."   # when you add affiliate links, append " Affiliate links may be included."
