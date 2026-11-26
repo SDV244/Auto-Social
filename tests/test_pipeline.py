@@ -64,3 +64,18 @@ def test_srt_and_draft_flow(tmp_path):
     assert publish.list_runs(tmp_path) == [("r1", "draft")]
     publish.set_status(d, "approved")
     assert publish.list_runs(tmp_path) == [("r1", "approved")]
+
+
+def test_visual_types_are_validated_and_scenes_align():
+    bad = dict(GOOD)
+    bad["beats"] = [
+        {"voiceover": "a b c", "visual_type": "screen", "visual_ref": "http://not-https"},  # -> card
+        {"voiceover": "d e f", "visual_type": "screen", "visual_ref": "https://notion.so"},
+        {"voiceover": "g h i", "visual_type": "weird", "visual_ref": "x"},  # -> card
+        {"voiceover": "j k l", "visual_type": "stock", "visual_ref": "person typing"},
+    ]
+    s = script_stage.parse_script(json.dumps(bad), Config(affiliate_cta="cta"))
+    assert [b.visual_type for b in s.beats] == ["card", "screen", "card", "stock"]
+    sc = render.scenes(s)
+    assert len(sc) == len(s.beats) + 2 == len(render.beat_timings(s))  # hook + beats + cta
+    assert all(x["duration"] > 0 for x in sc)

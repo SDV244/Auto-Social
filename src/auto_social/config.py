@@ -17,6 +17,7 @@ class Config:
     min_views: int = 20000
     monthly_budget_usd: float = 100.0
     script_model: str = "claude-sonnet-5-5"
+    final_model: str = "anthropic/claude-sonnet-5.5"
     llm_provider: str = "anthropic"  # anthropic | openrouter
     voice_provider: str = "none"
     voice_id: str = ""
@@ -40,6 +41,7 @@ class Config:
             min_views=int(raw.get("min_views", cls.min_views)),
             monthly_budget_usd=float(raw.get("monthly_budget_usd", cls.monthly_budget_usd)),
             script_model=models.get("script", cls.script_model),
+            final_model=models.get("final", cls.final_model),
             llm_provider=raw.get("llm", {}).get("provider", cls.llm_provider),
             voice_provider=voice.get("provider", cls.voice_provider),
             voice_id=voice.get("voice_id", cls.voice_id),

@@ -35,16 +35,32 @@ pytest
 
 Each draft folder holds `video.mp4`, `captions.srt`, `script.json`, `caption.txt` (with disclosure) and `status`.
 
+## Visuals and editing
+
+Every scene (hook, each beat, CTA) gets a visual chosen by the script (`visual_type`):
+
+| Type | How | Cost |
+|---|---|---|
+| `screen` | Real page recorded at phone size with Playwright (screenshots encoded by system ffmpeg) | $0 |
+| `card` | Text card rendered from HTML by headless Chromium, slow zoom | $0 |
+| `stock` | Provider hook in `visuals.stock_clip` (Pixabay API key needed; Pexels paused new keys). Falls back to `card` | $0 |
+
+Any failure degrades to a card so a render always completes. Captions are burned in by ffmpeg/libass.
+Install the browser once on your machine: `pip install playwright && playwright install chromium` (or set `PLAYWRIGHT_CHROMIUM_PATH`).
+
+## Models
+
+`models.script` (default `deepseek/deepseek-v4-flash`) writes drafts for fractions of a cent; `make --final` uses `models.final` (`anthropic/claude-sonnet-5.5`). Free OpenRouter models were tested: rate-limited (429) and more generic angles, so they are not the default.
+
 ## Status
 
-Verified end to end (cloud sandbox, 2026-11): live YouTube search, caption download (12.7k chars from a real video), script generation through **OpenRouter** (`anthropic/claude-sonnet-5.5`, ~$0.06 per script, 8 beats with a distinct angle) and ffmpeg render of a 1080x1920 video.
+Verified end to end in the cloud sandbox (2026-11): live YouTube search, caption download, scripts through OpenRouter, scene renderer with a real screen recording + text cards + captions.
 
 Known limits:
-- From datacenter IPs YouTube refuses per-video detail lookups ("confirm you're not a bot"), so upload age can be unknown; ranking then falls back to views/90 days. On a home connection age resolves normally.
-- Not verified: ElevenLabs voice, Postiz publishing.
-- Renderer still uses a plain background; real screen-recording visuals are next.
-
-LLM provider: `llm.provider: openrouter` (set `OPENROUTER_API_KEY`, use a dedicated key with a spend limit) or `anthropic`.
+- YouTube rate-limits/bot-checks datacenter IPs (`429`, "confirm you're not a bot"); upload age may be unknown and some caption downloads fail (those videos are skipped). A home connection is much less affected.
+- Captions are timed by word count, not by audio. Word-level sync (faster-whisper on the TTS audio) is next.
+- Not verified: ElevenLabs voice, Postiz publishing, Pixabay stock.
+- `screen` scenes need the target site reachable; otherwise they become cards.
 
 ## Roadmap
 

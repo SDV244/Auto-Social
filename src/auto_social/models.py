@@ -19,7 +19,9 @@ class Video:
 class Beat:
     voiceover: str
     on_screen_text: str = ""
-    visual: str = ""  # what to show: e.g. "screen recording: Notion AI summarizing a doc"
+    visual: str = ""        # human-readable description of the shot
+    visual_type: str = "card"  # card | screen | stock
+    visual_ref: str = ""    # screen: https URL to record; stock: search query; card: unused
 
 
 @dataclass

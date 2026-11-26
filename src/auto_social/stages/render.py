@@ -1,8 +1,7 @@
-"""Build subtitles and the ffmpeg command for a 1080x1920 video.
+"""Scene-based renderer: one clip per scene (hook, beats, cta), concatenated with audio + captions.
 
-Visuals: drop screen recordings / clips into `assets/` and name them in each beat's
-`visual`; with no clip the renderer falls back to a plain branded background so the
-pipeline always produces something reviewable.
+Each scene uses its beat's visual (screen recording / stock / text card); anything that
+fails or is not configured degrades to a text card, so a render always completes.
 """
 from __future__ import annotations
 
@@ -10,6 +9,9 @@ import subprocess
 from pathlib import Path
 
 from ..models import Script
+from . import visuals
+
+FPS = 30
 
 
 def _ts(sec: float) -> str:
@@ -37,11 +39,56 @@ def to_srt(script: Script) -> str:
     return "\n".join(blocks)
 
 
-def ffmpeg_command(srt: Path, out: Path, duration: float, audio: Path | None = None) -> list[str]:
-    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=0x101820:s=1080x1920:d={duration:.2f}:r=30"]
+def scenes(script: Script) -> list[dict]:
+    """Scene list aligned with beat_timings: hook, each beat, cta."""
+    items = [{"type": "card", "ref": "", "text": script.title}]
+    for b in script.beats:
+        items.append({"type": b.visual_type, "ref": b.visual_ref, "text": b.on_screen_text or b.voiceover})
+    items.append({"type": "card", "ref": "", "text": script.cta})
+    for it, (a, b, _) in zip(items, beat_timings(script)):
+        it["duration"] = b - a
+    return items
+
+
+def _run(cmd: list[str]) -> None:
+    subprocess.run(cmd, check=True, capture_output=True)
+
+
+def _still_clip(png: Path, dur: float, out: Path) -> None:
+    frames = int(dur * FPS)
+    vf = f"zoompan=z='min(zoom+0.0007,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps={FPS},format=yuv420p"
+    _run(["ffmpeg", "-y", "-i", str(png), "-vf", vf, "-frames:v", str(frames), "-c:v", "libx264", str(out)])
+
+
+def _video_clip(src: Path, dur: float, out: Path) -> None:
+    vf = f"scale=1080:1920,fps={FPS},tpad=stop_mode=clone:stop_duration={dur:.2f},format=yuv420p"
+    _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf, "-t", f"{dur:.2f}", "-an", "-c:v", "libx264", str(out)])
+
+
+def build_clips(script: Script, workdir: Path) -> list[Path]:
+    clips = []
+    for i, sc in enumerate(scenes(script)):
+        out = workdir / f"scene_{i:02}.mp4"
+        raw = None
+        if sc["type"] == "screen":
+            raw = visuals.screen_clip(sc["ref"], sc["duration"], workdir / f"scene_{i:02}_screen.mp4")
+        elif sc["type"] == "stock":
+            raw = visuals.stock_clip(sc["ref"], sc["duration"], workdir / f"scene_{i:02}_stock.mp4")
+        if raw:
+            _video_clip(raw, sc["duration"], out)
+        else:
+            png = visuals.card_png(sc["text"], workdir / f"scene_{i:02}.png")
+            _still_clip(png, sc["duration"], out)
+        clips.append(out)
+    return clips
+
+
+def final_command(concat_list: Path, srt: Path, out: Path, audio: Path | None = None) -> list[str]:
+    # libass scales style units to a 384x288 canvas: MarginV=48 is ~320px from the bottom of a 1920px frame
+    style = "FontSize=12,Alignment=2,MarginV=48,Outline=3,Bold=1,PrimaryColour=&H00FFFFFF"
+    cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_list)]
     if audio:
         cmd += ["-i", str(audio)]
-    style = "FontSize=18,Alignment=2,MarginV=260,Outline=2,PrimaryColour=&H00FFFFFF"
     cmd += ["-vf", f"subtitles={srt}:force_style='{style}'", "-c:v", "libx264", "-pix_fmt", "yuv420p"]
     cmd += ["-c:a", "aac", "-shortest"] if audio else []
     return cmd + [str(out)]
@@ -51,7 +98,9 @@ def run(script: Script, workdir: Path, audio: Path | None = None) -> Path:
     workdir.mkdir(parents=True, exist_ok=True)
     srt = workdir / "captions.srt"
     srt.write_text(to_srt(script))
-    duration = beat_timings(script)[-1][1]
+    clips = build_clips(script, workdir)
+    concat = workdir / "scenes.txt"
+    concat.write_text("".join(f"file '{c.resolve()}'\n" for c in clips))
     out = workdir / "video.mp4"
-    subprocess.run(ffmpeg_command(srt, out, duration, audio), check=True, capture_output=True)
+    _run(final_command(concat, srt, out, audio))
     return out

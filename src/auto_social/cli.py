@@ -24,10 +24,14 @@ def cmd_make(cfg: Config, args) -> int:
     for v in candidates:
         if made >= args.count:
             break
-        text = transcribe.run(v.url, cfg.language)
+        try:
+            text = transcribe.run(v.url, cfg.language)
+        except Exception as e:  # e.g. YouTube bot-check on this video: try the next one
+            print(f"skip {v.id}: {str(e)[:80]}")
+            continue
         if not text:
             continue
-        s = script_stage.run(cfg, budget, v, text)
+        s = script_stage.run(cfg, budget, v, text, final=args.final)
         d = RUNS / v.id
         audio = voice.synthesize(cfg, budget, s.voiceover_text(), d / "voice.mp3") if cfg.voice_provider != "none" else None
         video = render.run(s, d, audio)
@@ -58,6 +62,7 @@ def main(argv=None) -> int:
     m = sub.add_parser("make", help="research -> transcript -> script -> render -> draft")
     m.add_argument("--top", type=int, default=10)
     m.add_argument("--count", type=int, default=1)
+    m.add_argument("--final", action="store_true", help="use the premium model for the script")
     m.set_defaults(fn=cmd_make)
     sub.add_parser("review", help="list drafts and status").set_defaults(fn=cmd_review)
     for name in ("approve", "reject"):
