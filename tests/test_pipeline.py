@@ -99,3 +99,30 @@ def test_bot_wall_detection_and_caption_grouping():
     groups = render.group_words("Summarizes key points and extracts every single task".split())
     assert all(len(" ".join(g)) <= 18 or len(g) == 1 for g in groups)
     assert [w for g in groups for w in g] == "Summarizes key points and extracts every single task".split()
+
+
+def test_hook_variants_parse_and_save_card():
+    d = dict(GOOD)
+    d["hook"] = "Main hook."
+    d["hook_variants"] = [{"style": "question", "text": "Why?"}, {"style": "x", "text": "Main hook."}, {"style": "n", "text": "3 tools."}]
+    d["save_text"] = "Prompt: do X\\nThen Y"
+    s = script_stage.parse_script(json.dumps(d), Config(affiliate_cta="cta"))
+    assert [v["text"] for v in s.hook_variants] == ["Main hook.", "Why?", "3 tools."]
+    assert render.scenes(s)[-1]["text"].startswith("SAVE THIS\n")
+    from auto_social.stages import voice
+
+    assert voice._norm("Paste a meeting-transcript, get items!") == ["paste", "a", "meeting", "transcript", "get", "items"]
+
+
+def test_structure_problems_flags_missing_payoff_and_invented_numbers():
+    d = dict(GOOD)
+    d["hook"] = "Stop using 12 AI tools."
+    d["beats"] = [{"voiceover": "a b c d", "visual_type": "card"} for _ in range(5)]
+    s = script_stage.parse_script(json.dumps(d), Config())
+    probs = script_stage.structure_problems(s, "transcript with 3 tools")
+    assert any("FIRST beat" in p for p in probs) and any("12" in p for p in probs)
+    d["hook"] = "Stop using 3 AI tools."
+    d["beats"] = [{"voiceover": "a", "visual_type": "demo", "visual_ref": "p", "demo_output": "o"}] * 2 + [
+        {"voiceover": "b c", "visual_type": "card"}
+    ] * 3
+    assert script_stage.structure_problems(script_stage.parse_script(json.dumps(d), Config()), "3 tools") == []

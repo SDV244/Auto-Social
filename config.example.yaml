@@ -17,7 +17,7 @@ models:
 voice:
   provider: openrouter     # openrouter | elevenlabs | none (none = silent dry run, $0)
   model: openai/gpt-audio-mini
-  speed: 1.1               # 1.0 = natural; 1.1 = slightly brisk
+  speed: 1.15              # 1.0 = natural; 1.15 = brisk but clear
   voice_id: ash            # one voice per video. openrouter: ash, marin, coral, verse, nova... / elevenlabs voice id
 publish:
   provider: outbox         # outbox = local approval queue (default). postiz = see README

@@ -5,6 +5,7 @@ fails or is not configured degrades to a text card, so a render always completes
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -123,11 +124,12 @@ def to_ass(script: Script, durations: list[float] | None = None, words_per_line:
 
 def scenes(script: Script, durations: list[float] | None = None) -> list[dict]:
     """Scene list aligned with beat_timings: hook, each beat, cta."""
-    items = [{"type": "card", "ref": "", "text": script.title}]
+    items = [{"type": "card", "ref": "", "text": script.hook}]
     for b in script.beats:
         items.append({"type": b.visual_type, "ref": b.visual_ref, "text": b.on_screen_text or b.voiceover,
                       "output": b.demo_output})
-    items.append({"type": "card", "ref": "", "text": script.cta})
+    save = script.save_text.replace("\\n", "\n").strip()  # tolerate literal "\\n" from the model
+    items.append({"type": "card", "ref": "", "text": f"SAVE THIS\n{save}" if save else script.cta})
     for it, (a, b, _) in zip(items, timings(script, durations)):
         it["duration"] = b - a
     return items
@@ -149,10 +151,15 @@ def _video_clip(src: Path, dur: float, out: Path) -> None:
     _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf, "-t", f"{dur:.2f}", "-an", "-c:v", "libx264", str(out)])
 
 
-def build_clips(script: Script, workdir: Path, durations: list[float] | None = None) -> list[Path]:
+def build_clips(script: Script, workdir: Path, durations: list[float] | None = None, reuse_from: Path | None = None) -> list[Path]:
+    """`reuse_from`: a previous render of the same script; scenes after the hook are copied, not rebuilt."""
     clips = []
     for i, sc in enumerate(scenes(script, durations)):
         out = workdir / f"scene_{i:02}.mp4"
+        if reuse_from and i > 0 and (reuse_from / f"scene_{i:02}.mp4").exists():
+            shutil.copy(reuse_from / f"scene_{i:02}.mp4", out)
+            clips.append(out)
+            continue
         raw = None
         if sc["type"] == "screen":
             raw = visuals.screen_clip(sc["ref"], sc["duration"], workdir / f"scene_{i:02}_screen.mp4")
@@ -178,7 +185,7 @@ def final_command(concat_list: Path, ass: Path, out: Path, audio: Path | None = 
     return cmd + [str(out)]
 
 
-def run(script: Script, workdir: Path, scene_audio: list[Path] | None = None) -> Path:
+def run(script: Script, workdir: Path, scene_audio: list[Path] | None = None, reuse_from: Path | None = None) -> Path:
     """Render video.mp4. With `scene_audio` (one WAV per scene) timing comes from the audio."""
     from . import voice
 
@@ -187,7 +194,7 @@ def run(script: Script, workdir: Path, scene_audio: list[Path] | None = None) ->
     (workdir / "captions.srt").write_text(to_srt(script, durations))  # plain captions, handy for upload
     ass = workdir / "captions.ass"
     ass.write_text(to_ass(script, durations))
-    clips = build_clips(script, workdir, durations)
+    clips = build_clips(script, workdir, durations, reuse_from)
     concat = workdir / "scenes.txt"
     concat.write_text("".join(f"file '{c.resolve()}'\n" for c in clips))
     audio = None

@@ -21,7 +21,7 @@ class Config:
     llm_provider: str = "anthropic"  # anthropic | openrouter
     voice_provider: str = "none"
     voice_model: str = "openai/gpt-audio-mini"
-    voice_speed: float = 1.1
+    voice_speed: float = 1.15
     voice_id: str = ""
     publish_provider: str = "outbox"
     affiliate_cta: str = ""

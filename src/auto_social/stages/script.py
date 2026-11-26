@@ -12,26 +12,34 @@ from ..budget import Budget
 from ..config import Config
 from ..models import Beat, Script, Video
 
-SYSTEM = """You write 45-60 second faceless short-form video scripts for the niche: {niche}.
+SYSTEM = """You write 30-45 second faceless short-form video scripts for the niche: {niche}.
 Audience: {market} viewers, language: {language}.
 
 Rules:
 - You receive a transcript of a video that is performing well. Use it ONLY to learn the topic and why it works (hook, pacing, structure). Never reuse its wording, examples or sequence.
 - Add a distinct angle the source does not have (a concrete workflow, a comparison, a mistake to avoid, a number you can justify). State that angle in "angle".
 - Do not invent facts, prices, features or statistics. If unsure, leave them out.
-- 6-9 short beats. Each beat: voiceover (<= 25 words), on_screen_text (<= 6 words), visual (one-line description of the shot),
+
+STRUCTURE (retention-first, in this order):
+ 1. HOOK (first 3 seconds, <= 12 words): promise a concrete result or call out a costly mistake. No intro, no greeting, no "in this video".
+    Give 3 "hook_variants" with different styles: "question", "mistake" (a common error, described without invented costs) and "number". Put the best one in "hook".
+    HARD RULE on numbers: the "number" style may ONLY count things that appear in this video (e.g. "3 prompts", "2 steps", "4 tools"). Never state prices, dollar amounts, percentages, time saved, speeds or earnings unless the source transcript states them. A hook must promise only what the video actually shows.
+ 2. PAYOFF FIRST: the first beat SHOWS the result (a "demo" beat) before explaining it.
+ 3. 3-5 short beats that explain how, one idea each.
+ 4. RE-HOOK around the middle: one beat that opens a new loop ("but here is the part most people skip").
+ 5. CLOSE: a save-worthy takeaway (the exact prompt, checklist or rule to copy) in "save_text" (<= 40 words, short lines separated by \\n),
+    and a "cta" (<= 12 words) that says to save it and ties back to the hook so the video loops.
+- Each beat: voiceover (<= 22 words), on_screen_text (<= 6 words), visual (one-line description of the shot),
   visual_type and visual_ref:
-    "screen": a screen recording of a real public web page. visual_ref = full https URL of the tool's public homepage/pricing/demo page. Use for beats that name a specific tool.
-    "stock": generic b-roll. visual_ref = a 2-4 word search query (e.g. "person typing laptop").
     "demo": an animated chat where a prompt is typed and an answer is generated live. visual_ref = the prompt (<= 20 words),
-      "demo_output" = a concrete example answer (<= 45 words, short lines separated by \\n). Use it to SHOW a real use case. It is
-      an illustrative example, so write something genuinely useful and accurate.
+      "demo_output" = a concrete example answer (<= 45 words, short lines separated by \\n). It is an illustrative example,
+      so write something genuinely useful and accurate.
+    "screen": a screen recording of a real public web page. visual_ref = full https URL of the tool's public page. Only when a beat names a specific tool.
+    "stock": generic b-roll. visual_ref = a 2-4 word search query.
     "card": a clean text card for rules, comparisons and takeaways. visual_ref = "".
-  Mix them: 2 "demo" beats, at most 2 "screen" beats, the rest "card"/"stock". Never invent URLs you are not sure exist.
-  Keep every beat under 8 seconds when spoken; fast pacing keeps viewers watching.
-- Total spoken words (hook + all beats + cta) must be 90-120, so the video runs about 40-55 seconds.
-- Hook in the first sentence, under 15 words, no clickbait that the video does not pay off.
-Return ONLY JSON: {{"title","hook","angle","beats":[{{"voiceover","on_screen_text","visual","visual_type","visual_ref","demo_output"}}],"cta"}}"""
+  Use 2 "demo" beats (the first one is the payoff), at most 1 "screen" beat, the rest "card"/"stock". Never invent URLs you are not sure exist.
+- Total spoken words (hook + beats + cta) must be 75-100, so the video runs about 30-40 seconds. Every beat under 7 seconds spoken.
+Return ONLY JSON: {{"title","hook","hook_variants":[{{"style","text"}}],"angle","beats":[{{"voiceover","on_screen_text","visual","visual_type","visual_ref","demo_output"}}],"save_text","cta"}}"""
 
 # Rough Sonnet-class pricing used only for the budget guard (USD per million tokens).
 IN_PER_M, OUT_PER_M = 2.0, 10.0
@@ -63,14 +71,44 @@ def parse_script(raw: str, cfg: Config) -> Script:
         beats.append(Beat(b.get("voiceover", ""), b.get("on_screen_text", ""), b.get("visual", ""), vt, ref, demo_out))
     if not 4 <= len(beats) <= 12:
         raise ValueError(f"unexpected number of beats: {len(beats)}")
+    variants = [
+        {"style": str(v.get("style", "")), "text": str(v.get("text", "")).strip()}
+        for v in d.get("hook_variants", [])
+        if isinstance(v, dict) and str(v.get("text", "")).strip()
+    ]
+    hook = d.get("hook") or (variants[0]["text"] if variants else "")
+    if not hook:
+        raise ValueError("script has no hook")
+    # the chosen hook is always variant A; keep up to 3 distinct variants after it
+    variants = [v for v in variants if v["text"] != hook]
+    variants.insert(0, {"style": "main", "text": hook})
+    variants = variants[:3]
     return Script(
         title=d["title"],
-        hook=d["hook"],
+        hook=hook,
+        hook_variants=variants,
+        save_text=str(d.get("save_text", "") or ""),
         angle=d.get("angle", ""),
         beats=beats,
         cta=d.get("cta") or cfg.affiliate_cta,
         disclosure=cfg.disclosure,
     )
+
+
+def structure_problems(s: Script, transcript: str = "") -> list[str]:
+    """Rule checks the model often breaks: payoff-first order, enough demos, no invented numbers in hooks."""
+    problems = []
+    if not s.beats or s.beats[0].visual_type != "demo":
+        problems.append('the FIRST beat must be a "demo" beat that shows the result (payoff first)')
+    if sum(b.visual_type == "demo" for b in s.beats) < 2:
+        problems.append('use 2 "demo" beats')
+    evidence = " ".join([transcript, s.save_text] + [f"{b.voiceover} {b.on_screen_text} {b.visual_ref} {b.demo_output}" for b in s.beats]).lower()
+    for v in s.hook_variants or [{"text": s.hook}]:
+        for num in re.findall(r"\d[\d,.]*", v["text"]):
+            if num.strip(",.") not in evidence:
+                problems.append(f'hook "{v["text"]}" states the number {num}, which the video never shows; drop it or count only things shown')
+                break
+    return problems
 
 
 def _call_openrouter(cfg: Config, system: str, user: str, model: str | None = None) -> str:
@@ -119,15 +157,27 @@ def run(cfg: Config, budget: Budget, video: Video, transcript: str, client=None,
     if cfg.llm_provider not in ("openrouter", "anthropic"):
         raise ValueError(f"unknown llm provider: {cfg.llm_provider}")
     last: Exception | None = None
-    for _ in range(2):  # one retry if the model returns malformed/truncated JSON
+    best: Script | None = None
+    feedback = ""
+    for _ in range(3):  # retries for malformed JSON or rule violations
+        prompt = user + (f"\n\nYour previous attempt broke these rules, fix them: {feedback}" if feedback else "")
         raw = (
-            _call_openrouter(cfg, system, user, model)
+            _call_openrouter(cfg, system, prompt, model)
             if cfg.llm_provider == "openrouter"
-            else _call_anthropic(cfg, system, user, client, model)
+            else _call_anthropic(cfg, system, prompt, client, model)
         )
         try:
-            return parse_script(raw, cfg)
+            parsed = parse_script(raw, cfg)
         except (ValueError, KeyError) as e:  # JSONDecodeError is a ValueError
             last = e
             budget.charge(est, "script retry")
+            continue
+        problems = structure_problems(parsed, transcript)
+        if not problems:
+            return parsed
+        best = best or parsed
+        feedback = "; ".join(problems)
+        budget.charge(est, "script retry")
+    if best:  # accept the first parseable draft; the human approval step catches the rest
+        return best
     raise RuntimeError(f"model returned an unusable script twice: {last}")

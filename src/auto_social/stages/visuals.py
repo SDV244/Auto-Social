@@ -47,7 +47,7 @@ def card_png(text: str, out: Path) -> Path:
     with sync_playwright() as p:
         browser = _launch(p)
         page = browser.new_page(viewport={"width": W, "height": H})
-        page.set_content(CARD_HTML.format(w=W, h=H, size=size, text=html.escape(text)))
+        page.set_content(CARD_HTML.format(w=W, h=H, size=size, text=html.escape(text).replace("\n", "<br>")))
         page.screenshot(path=str(out))
         browser.close()
     return out

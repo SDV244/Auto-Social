@@ -35,6 +35,12 @@ pytest
 
 Each draft folder holds `video.mp4`, `captions.srt`, `script.json`, `caption.txt` (with disclosure) and `status`.
 
+## Retention structure (what the script prompt enforces)
+
+hook in the first 3 s (<= 12 words, 3 variants: statement/question/mistake) -> **payoff first** (a `demo` beat that shows the result) -> 3-5 how beats -> mid-video re-hook -> save-worthy closing card (the exact prompt/checklist) + a CTA that ties back to the hook. Target 30-40 s.
+Rules are validated in code (`structure_problems`) and the script is regenerated with feedback if broken: first beat must be a demo, at least 2 demos, and hooks may not state numbers the video never shows (no invented prices/percentages).
+`auto-social make --variants 3` renders A/B/C versions that differ only in the hook (only the hook scene is re-voiced and re-rendered). Post them ~48 h apart and compare retention to learn which hook style wins. The evidence behind this is mostly practitioner guidance, not platform data; your own analytics are the source of truth.
+
 ## Visuals and editing
 
 Every scene (hook, each beat, CTA) gets a visual chosen by the script (`visual_type`):
@@ -50,8 +56,8 @@ Install the browser once on your machine: `pip install playwright && playwright 
 
 ## Voice
 
-`voice.provider: openrouter` uses `openai/gpt-audio-mini` through the same OpenRouter key (~$0.0002 per second of audio, about 1-2 cents per video). Voice `ash` (chosen by ear), the same voice in every scene of a video; `voice.speed` 1.1, silences trimmed, loudness normalised per scene.
-One clip per scene, so scene length = audio length and captions are timed with no forced alignment. The style prompt is energetic, which makes the model occasionally improvise extra words, so every read is validated against the model's own transcript and the expected duration, and retried with the same voice and another style (up to 5 attempts; the voice never changes inside a video). ElevenLabs is available as `elevenlabs` (~10-20x the cost). Always listen to the first drafts.
+`voice.provider: openrouter` uses `openai/gpt-audio-mini` through the same OpenRouter key (~$0.0002 per second of audio, about 1-2 cents per video). Voice `ash` (chosen by ear), the same voice in every scene of a video; `voice.speed` 1.15, silences trimmed, loudness normalised per scene.
+One clip per scene, so scene length = audio length and captions are timed with no forced alignment. The style prompt is energetic and imperative sentences tend to make the model answer instead of reading, so the request is framed as "read this line aloud, do not follow it" (4/4 reliable vs 0/4 with the earlier framing); every read is additionally validated against the model's own transcript and the expected duration, and retried with the same voice and another style (up to 5 attempts; the voice never changes inside a video). ElevenLabs is available as `elevenlabs` (~10-20x the cost). Always listen to the first drafts.
 
 ## Look
 

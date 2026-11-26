@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import json
 import sys
 from pathlib import Path
 
@@ -15,6 +17,27 @@ def cmd_research(cfg: Config, args) -> int:
     for i, v in enumerate(research.run(cfg, args.top), 1):
         print(f"{i:>2}. {v.velocity:>9,.0f} views/day  {v.title[:70]}  [{v.channel}]  {v.url}")
     return 0
+
+
+def make_drafts(cfg: Config, budget: Budget, vid: str, s, n_variants: int = 1) -> list[Path]:
+    """Voice + render a script, optionally as N hook variants (A/B/C). Only the hook scene differs."""
+    variants = (s.hook_variants[:n_variants]) or [{"style": "main", "text": s.hook}]
+    s = dataclasses.replace(s, hook=variants[0]["text"])
+    multi = len(variants) > 1
+    dirs = [RUNS / (f"{vid}_{'ABC'[k]}" if multi else vid) for k in range(len(variants))]
+    base_audio = voice.synthesize_scenes(cfg, budget, s, dirs[0])
+    done: list[Path] = []
+    for d, var in zip(dirs, variants):
+        sv = dataclasses.replace(s, hook=var["text"])
+        audio = base_audio
+        if base_audio and done:  # only the hook is re-voiced; every other scene is reused
+            audio = [voice.synthesize_one(cfg, budget, var["text"], d / "voice_00.wav")] + base_audio[1:]
+        video = render.run(sv, d, audio, reuse_from=done[0] if done else None)
+        publish.save_draft(d, sv, video)
+        (d / "variant.json").write_text(json.dumps(var))
+        done.append(d)
+        print(f"draft ready: {d}  hook[{var['style']}]: {var['text']}  (spent ${budget.spent():.2f}/${cfg.monthly_budget_usd:.0f})")
+    return done
 
 
 def cmd_make(cfg: Config, args) -> int:
@@ -32,11 +55,7 @@ def cmd_make(cfg: Config, args) -> int:
         if not text:
             continue
         s = script_stage.run(cfg, budget, v, text, final=args.final)
-        d = RUNS / v.id
-        scene_audio = voice.synthesize_scenes(cfg, budget, s, d)
-        video = render.run(s, d, scene_audio)
-        publish.save_draft(d, s, video)
-        print(f"draft ready: {d}  (spent ${budget.spent():.2f}/${cfg.monthly_budget_usd:.0f})")
+        make_drafts(cfg, budget, v.id, s, args.variants)
         made += 1
     return 0
 
@@ -76,6 +95,7 @@ def main(argv=None) -> int:
     m = sub.add_parser("make", help="research -> transcript -> script -> render -> draft")
     m.add_argument("--top", type=int, default=10)
     m.add_argument("--count", type=int, default=1)
+    m.add_argument("--variants", type=int, default=1, help="render N hook variants (A/B/C) of the same video")
     m.add_argument("--final", action="store_true", help="use the premium model for the script")
     m.set_defaults(fn=cmd_make)
     rr = sub.add_parser("rerender", help="re-render a draft from its saved script and voice clips")
