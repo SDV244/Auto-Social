@@ -17,9 +17,8 @@ models:
 voice:
   provider: openrouter     # openrouter | elevenlabs | none (none = silent dry run, $0)
   model: openai/gpt-audio-mini
-  fallback: marin          # backup voice used when a read fails validation
-  speed: 1.2               # 1.0 = natural; 1.15-1.3 suits shorts
-  voice_id: ash              # openrouter voices: alloy, onyx, nova, echo, shimmer... / elevenlabs voice id
+  speed: 1.1               # 1.0 = natural; 1.1 = slightly brisk
+  voice_id: ash            # one voice per video. openrouter: ash, marin, coral, verse, nova... / elevenlabs voice id
 publish:
   provider: outbox         # outbox = local approval queue (default). postiz = see README
 affiliate_cta: "Link in bio for the tool I use"   # replace with real tracked links

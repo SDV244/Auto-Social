@@ -137,10 +137,9 @@ def synthesize_scenes(cfg: Config, budget: Budget, script: Script, workdir: Path
 
 
 def attempt_plan(cfg: Config) -> list[tuple[str, str]]:
-    """Voice/style per attempt: preferred voice twice, then the fallback voice, then a calm read."""
-    first = cfg.voice_id or "ash"
-    backup = cfg.voice_fallback or "marin"
-    return [(first, ENERGETIC), (first, ENERGETIC), (backup, ENERGETIC), (first, CALM), (backup, CALM)]
+    """Voice/style per attempt. The voice never changes within a video: retries only vary the style."""
+    voice_name = cfg.voice_id or "ash"
+    return [(voice_name, ENERGETIC)] * 4 + [(voice_name, CALM)]
 
 
 def polish(src: Path, dst: Path, speed: float) -> Path:
@@ -149,6 +148,7 @@ def polish(src: Path, dst: Path, speed: float) -> Path:
     af = f"{trim},areverse,{trim},areverse"
     if abs(speed - 1.0) > 0.01:
         af += f",atempo={speed}"
+    af += ",loudnorm=I=-16:TP=-1.5:LRA=7"  # same loudness in every scene so it sounds like one take
     subprocess.run(["ffmpeg", "-y", "-i", str(src), "-af", af, "-ar", str(SAMPLE_RATE), "-ac", "1", str(dst)], check=True, capture_output=True)
     return dst
 

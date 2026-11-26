@@ -21,8 +21,7 @@ class Config:
     llm_provider: str = "anthropic"  # anthropic | openrouter
     voice_provider: str = "none"
     voice_model: str = "openai/gpt-audio-mini"
-    voice_speed: float = 1.2
-    voice_fallback: str = "marin"
+    voice_speed: float = 1.1
     voice_id: str = ""
     publish_provider: str = "outbox"
     affiliate_cta: str = ""
@@ -49,7 +48,6 @@ class Config:
             voice_provider=voice.get("provider", cls.voice_provider),
             voice_model=voice.get("model", cls.voice_model),
             voice_speed=float(voice.get("speed", cls.voice_speed)),
-            voice_fallback=voice.get("fallback", cls.voice_fallback),
             voice_id=voice.get("voice_id", cls.voice_id),
             publish_provider=publish.get("provider", cls.publish_provider),
             affiliate_cta=raw.get("affiliate_cta", cls.affiliate_cta),

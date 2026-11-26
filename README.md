@@ -50,8 +50,8 @@ Install the browser once on your machine: `pip install playwright && playwright 
 
 ## Voice
 
-`voice.provider: openrouter` uses `openai/gpt-audio-mini` through the same OpenRouter key (~$0.0002 per second of audio, about 1-2 cents per video). Preferred voice `ash`, fallback `marin` (both chosen by ear; `voice.speed` 1.2 by default, silences trimmed).
-One clip per scene, so scene length = audio length and captions are timed with no forced alignment. The style prompt is energetic, which makes the model occasionally improvise extra words, so every read is validated against the model's own transcript and the expected duration, and retried with another voice/style (up to 5 attempts). ElevenLabs is available as `elevenlabs` (~10-20x the cost). Always listen to the first drafts.
+`voice.provider: openrouter` uses `openai/gpt-audio-mini` through the same OpenRouter key (~$0.0002 per second of audio, about 1-2 cents per video). Voice `ash` (chosen by ear), the same voice in every scene of a video; `voice.speed` 1.1, silences trimmed, loudness normalised per scene.
+One clip per scene, so scene length = audio length and captions are timed with no forced alignment. The style prompt is energetic, which makes the model occasionally improvise extra words, so every read is validated against the model's own transcript and the expected duration, and retried with the same voice and another style (up to 5 attempts; the voice never changes inside a video). ElevenLabs is available as `elevenlabs` (~10-20x the cost). Always listen to the first drafts.
 
 ## Look
 
