@@ -41,6 +41,20 @@ def cmd_make(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_rerender(cfg: Config, args) -> int:
+    """Re-render a draft from its saved script and existing voice clips (no new voice cost)."""
+    import json
+
+    from .models import script_from_dict
+
+    d = RUNS / args.run_id
+    s = script_from_dict(json.loads((d / "script.json").read_text()))
+    clips = sorted(d.glob("voicefast_*.wav"))
+    out = render.run(s, d, clips or None)
+    print(f"re-rendered: {out}")
+    return 0
+
+
 def cmd_review(cfg: Config, args) -> int:
     for name, status in publish.list_runs(RUNS):
         print(f"{status:<9} {name}")
@@ -64,6 +78,9 @@ def main(argv=None) -> int:
     m.add_argument("--count", type=int, default=1)
     m.add_argument("--final", action="store_true", help="use the premium model for the script")
     m.set_defaults(fn=cmd_make)
+    rr = sub.add_parser("rerender", help="re-render a draft from its saved script and voice clips")
+    rr.add_argument("run_id")
+    rr.set_defaults(fn=cmd_rerender)
     sub.add_parser("review", help="list drafts and status").set_defaults(fn=cmd_review)
     for name in ("approve", "reject"):
         a = sub.add_parser(name)

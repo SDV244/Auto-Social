@@ -23,11 +23,15 @@ Rules:
   visual_type and visual_ref:
     "screen": a screen recording of a real public web page. visual_ref = full https URL of the tool's public homepage/pricing/demo page. Use for beats that name a specific tool.
     "stock": generic b-roll. visual_ref = a 2-4 word search query (e.g. "person typing laptop").
+    "demo": an animated chat where a prompt is typed and an answer is generated live. visual_ref = the prompt (<= 20 words),
+      "demo_output" = a concrete example answer (<= 45 words, short lines separated by \\n). Use it to SHOW a real use case. It is
+      an illustrative example, so write something genuinely useful and accurate.
     "card": a clean text card for rules, comparisons and takeaways. visual_ref = "".
-  Use at most 3 "screen" beats and prefer "card" when unsure; never invent URLs you are not sure exist.
+  Mix them: 2 "demo" beats, at most 2 "screen" beats, the rest "card"/"stock". Never invent URLs you are not sure exist.
+  Keep every beat under 8 seconds when spoken; fast pacing keeps viewers watching.
 - Total spoken words (hook + all beats + cta) must be 90-120, so the video runs about 40-55 seconds.
 - Hook in the first sentence, under 15 words, no clickbait that the video does not pay off.
-Return ONLY JSON: {{"title","hook","angle","beats":[{{"voiceover","on_screen_text","visual","visual_type","visual_ref"}}],"cta"}}"""
+Return ONLY JSON: {{"title","hook","angle","beats":[{{"voiceover","on_screen_text","visual","visual_type","visual_ref","demo_output"}}],"cta"}}"""
 
 # Rough Sonnet-class pricing used only for the budget guard (USD per million tokens).
 IN_PER_M, OUT_PER_M = 2.0, 10.0
@@ -51,9 +55,12 @@ def parse_script(raw: str, cfg: Config) -> Script:
         ref = b.get("visual_ref", "") or ""
         if vt == "screen" and not ref.startswith("https://"):
             vt, ref = "card", ""
-        if vt not in ("card", "screen", "stock"):
-            vt, ref = "card", ""
-        beats.append(Beat(b.get("voiceover", ""), b.get("on_screen_text", ""), b.get("visual", ""), vt, ref))
+        demo_out = b.get("demo_output", "") or ""
+        if vt == "demo" and not (ref and demo_out):
+            vt, ref, demo_out = "card", "", ""
+        if vt not in ("card", "screen", "stock", "demo"):
+            vt, ref, demo_out = "card", "", ""
+        beats.append(Beat(b.get("voiceover", ""), b.get("on_screen_text", ""), b.get("visual", ""), vt, ref, demo_out))
     if not 4 <= len(beats) <= 12:
         raise ValueError(f"unexpected number of beats: {len(beats)}")
     return Script(

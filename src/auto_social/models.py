@@ -20,8 +20,9 @@ class Beat:
     voiceover: str
     on_screen_text: str = ""
     visual: str = ""        # human-readable description of the shot
-    visual_type: str = "card"  # card | screen | stock
-    visual_ref: str = ""    # screen: https URL to record; stock: search query; card: unused
+    visual_type: str = "card"  # card | screen | stock | demo
+    visual_ref: str = ""    # screen: https URL; stock: search query; demo: the example prompt typed on screen
+    demo_output: str = ""   # demo only: the example response that "generates" on screen
 
 
 @dataclass
@@ -39,3 +40,8 @@ class Script:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def script_from_dict(d: dict) -> Script:
+    beats = [Beat(**b) for b in d["beats"]]
+    return Script(**{**d, "beats": beats})

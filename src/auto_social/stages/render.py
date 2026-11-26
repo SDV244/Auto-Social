@@ -12,6 +12,7 @@ from ..models import Script
 from . import visuals
 
 FPS = 30
+PAD = 0.08  # seconds of silence after each scene; keeps cuts snappy
 
 
 def _ts(sec: float) -> str:
@@ -64,11 +65,68 @@ def to_srt(script: Script, durations: list[float] | None = None) -> str:
     return "\n".join(blocks)
 
 
+def _ass_time(sec: float) -> str:
+    cs = int(round(sec * 100))
+    h, cs = divmod(cs, 360000)
+    m, cs = divmod(cs, 6000)
+    s, cs = divmod(cs, 100)
+    return f"{h}:{m:02}:{s:02}.{cs:02}"
+
+
+ASS_HEADER = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 2
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Cap,Inter,86,&H0000E5FF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,9,0,2,60,60,430,1
+
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+"""
+
+
+def group_words(words: list[str], max_words: int = 3, max_chars: int = 18) -> list[list[str]]:
+    """Split into short caption lines that fit the 1080px frame at the caption font size."""
+    groups, cur = [], []
+    for w in words:
+        if cur and (len(cur) >= max_words or len(" ".join(cur + [w])) > max_chars):
+            groups.append(cur)
+            cur = []
+        cur.append(w)
+    if cur:
+        groups.append(cur)
+    return groups
+
+
+def to_ass(script: Script, durations: list[float] | None = None, words_per_line: int = 3) -> str:
+    """Kinetic captions: 3-word lines, big, the word being spoken turns yellow, short pop-in."""
+    lines = []
+    for a, b, text in timings(script, durations):
+        words = text.split()
+        groups = group_words(words, words_per_line) or [[text]]
+        total = sum(len(w) + 1 for g in groups for w in g) or 1
+        t = a
+        for g in groups:
+            glen = sum(len(w) + 1 for w in g)
+            gd = (b - a) * glen / total
+            ks = "".join(
+                f"{{\\k{max(int(round(gd * (len(w) + 1) / glen * 100)), 1)}}}{w.upper()} " for w in g
+            ).strip()
+            pop = "{\\fscx82\\fscy82\\t(0,110,\\fscx100\\fscy100)}"
+            lines.append(f"Dialogue: 0,{_ass_time(t)},{_ass_time(t + gd)},Cap,,0,0,0,,{pop}{ks}")
+            t += gd
+    return ASS_HEADER + "\n".join(lines) + "\n"
+
+
 def scenes(script: Script, durations: list[float] | None = None) -> list[dict]:
     """Scene list aligned with beat_timings: hook, each beat, cta."""
     items = [{"type": "card", "ref": "", "text": script.title}]
     for b in script.beats:
-        items.append({"type": b.visual_type, "ref": b.visual_ref, "text": b.on_screen_text or b.voiceover})
+        items.append({"type": b.visual_type, "ref": b.visual_ref, "text": b.on_screen_text or b.voiceover,
+                      "output": b.demo_output})
     items.append({"type": "card", "ref": "", "text": script.cta})
     for it, (a, b, _) in zip(items, timings(script, durations)):
         it["duration"] = b - a
@@ -79,9 +137,10 @@ def _run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True, capture_output=True)
 
 
-def _still_clip(png: Path, dur: float, out: Path) -> None:
+def _still_clip(png: Path, dur: float, out: Path, zoom_out: bool = False) -> None:
     frames = int(dur * FPS)
-    vf = f"zoompan=z='min(zoom+0.0007,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps={FPS},format=yuv420p"
+    z = "if(eq(on,0),1.12,max(zoom-0.0009,1.0))" if zoom_out else "min(zoom+0.0009,1.12)"
+    vf = f"zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps={FPS},format=yuv420p"
     _run(["ffmpeg", "-y", "-i", str(png), "-vf", vf, "-frames:v", str(frames), "-c:v", "libx264", str(out)])
 
 
@@ -97,24 +156,24 @@ def build_clips(script: Script, workdir: Path, durations: list[float] | None = N
         raw = None
         if sc["type"] == "screen":
             raw = visuals.screen_clip(sc["ref"], sc["duration"], workdir / f"scene_{i:02}_screen.mp4")
+        elif sc["type"] == "demo":
+            raw = visuals.demo_clip(sc["ref"], sc["output"], sc["duration"], workdir / f"scene_{i:02}_demo.mp4")
         elif sc["type"] == "stock":
             raw = visuals.stock_clip(sc["ref"], sc["duration"], workdir / f"scene_{i:02}_stock.mp4")
         if raw:
             _video_clip(raw, sc["duration"], out)
         else:
             png = visuals.card_png(sc["text"], workdir / f"scene_{i:02}.png")
-            _still_clip(png, sc["duration"], out)
+            _still_clip(png, sc["duration"], out, zoom_out=i % 2 == 1)
         clips.append(out)
     return clips
 
 
-def final_command(concat_list: Path, srt: Path, out: Path, audio: Path | None = None) -> list[str]:
-    # libass scales style units to a 384x288 canvas: MarginV=48 is ~320px from the bottom of a 1920px frame
-    style = "FontSize=12,Alignment=2,MarginV=48,Outline=3,Bold=1,PrimaryColour=&H00FFFFFF"
+def final_command(concat_list: Path, ass: Path, out: Path, audio: Path | None = None) -> list[str]:
     cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_list)]
     if audio:
         cmd += ["-i", str(audio)]
-    cmd += ["-vf", f"subtitles={srt}:force_style='{style}'", "-c:v", "libx264", "-pix_fmt", "yuv420p"]
+    cmd += ["-vf", f"ass={ass}", "-c:v", "libx264", "-pix_fmt", "yuv420p"]
     cmd += ["-c:a", "aac", "-shortest"] if audio else []
     return cmd + [str(out)]
 
@@ -124,20 +183,21 @@ def run(script: Script, workdir: Path, scene_audio: list[Path] | None = None) ->
     from . import voice
 
     workdir.mkdir(parents=True, exist_ok=True)
-    durations = [voice.wav_duration(p) + 0.2 for p in scene_audio] if scene_audio else None
-    srt = workdir / "captions.srt"
-    srt.write_text(to_srt(script, durations))
+    durations = [voice.wav_duration(p) + PAD for p in scene_audio] if scene_audio else None
+    (workdir / "captions.srt").write_text(to_srt(script, durations))  # plain captions, handy for upload
+    ass = workdir / "captions.ass"
+    ass.write_text(to_ass(script, durations))
     clips = build_clips(script, workdir, durations)
     concat = workdir / "scenes.txt"
     concat.write_text("".join(f"file '{c.resolve()}'\n" for c in clips))
     audio = None
     if scene_audio:
         padded = []
-        for i, p in enumerate(scene_audio):  # 0.2 s of silence after each scene keeps audio aligned with video
+        for i, p in enumerate(scene_audio):  # short silence after each scene keeps audio aligned with video
             q = workdir / f"voicepad_{i:02}.wav"
-            _run(["ffmpeg", "-y", "-i", str(p), "-af", "apad=pad_dur=0.2", "-ar", "24000", "-ac", "1", str(q)])
+            _run(["ffmpeg", "-y", "-i", str(p), "-af", f"apad=pad_dur={PAD}", "-ar", "24000", "-ac", "1", str(q)])
             padded.append(q)
         audio = voice.concat_audio(padded, workdir / "voice.m4a")
     out = workdir / "video.mp4"
-    _run(final_command(concat, srt, out, audio))
+    _run(final_command(concat, ass, out, audio))
     return out
