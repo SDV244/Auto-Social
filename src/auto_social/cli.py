@@ -6,9 +6,10 @@ import json
 import sys
 from pathlib import Path
 
-from .budget import Budget
+from .budget import Budget, openrouter_balance
 from .config import Config
-from .stages import publish, render, research, script as script_stage, transcribe, voice
+from .models import Video
+from .stages import package, publish, render, research, script as script_stage, transcribe, voice
 
 RUNS = Path("runs")
 
@@ -41,8 +42,27 @@ def make_drafts(cfg: Config, budget: Budget, vid: str, s, n_variants: int = 1) -
     return done
 
 
+def _slug(text: str) -> str:
+    import re
+
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40]
+
+
+MIN_BALANCE_PER_VIDEO = 1.0  # USD of OpenRouter credit to keep available per video (script + voice + up to 18 s of AI video)
+
+
 def cmd_make(cfg: Config, args) -> int:
     budget = Budget(cfg.monthly_budget_usd)
+    balance = openrouter_balance()
+    n = len(args.topic) if args.topic else args.count
+    if balance is not None and balance < MIN_BALANCE_PER_VIDEO * n:
+        raise SystemExit(f"OpenRouter balance is ${balance:.2f}; {n} video(s) need about ${MIN_BALANCE_PER_VIDEO * n:.2f}. Add credits at openrouter.ai/credits first.")
+    if args.topic:  # topic mode: no YouTube needed, no reference video
+        for topic in args.topic:
+            v = Video(id=_slug(topic), title=topic, url="", channel="", views=0, age_days=-1)
+            s = script_stage.run(cfg, budget, v, f"TOPIC BRIEF: {topic}", final=args.final)
+            make_drafts(cfg, budget, v.id, s, args.variants)
+        return 0
     candidates = research.run(cfg, args.top)
     made = 0
     for v in candidates:
@@ -81,6 +101,19 @@ def cmd_rerender(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_package(cfg: Config, args) -> int:
+    """Write the upload kit (video + title + description + caption + checklist) for a draft."""
+    import json
+
+    from .models import script_from_dict
+
+    d = RUNS / args.run_id
+    s = script_from_dict(json.loads((d / "script.json").read_text()))
+    out = package.build(d, s, cfg)
+    print(f"upload kit: {out}")
+    return 0
+
+
 def cmd_review(cfg: Config, args) -> int:
     for name, status in publish.list_runs(RUNS):
         print(f"{status:<9} {name}")
@@ -102,12 +135,16 @@ def main(argv=None) -> int:
     m = sub.add_parser("make", help="research -> transcript -> script -> render -> draft")
     m.add_argument("--top", type=int, default=10)
     m.add_argument("--count", type=int, default=1)
+    m.add_argument("--topic", action="append", help="write a video from a topic instead of researching one (repeatable)")
     m.add_argument("--variants", type=int, default=1, help="render N hook variants (A/B/C) of the same video")
     m.add_argument("--final", action="store_true", help="use the premium model for the script")
     m.set_defaults(fn=cmd_make)
     rr = sub.add_parser("rerender", help="re-render a draft from its saved script and voice clips")
     rr.add_argument("run_id")
     rr.set_defaults(fn=cmd_rerender)
+    pk = sub.add_parser("package", help="write the upload kit for a draft (video, title, description, caption, checklist)")
+    pk.add_argument("run_id")
+    pk.set_defaults(fn=cmd_package)
     sub.add_parser("review", help="list drafts and status").set_defaults(fn=cmd_review)
     for name in ("approve", "reject"):
         a = sub.add_parser(name)

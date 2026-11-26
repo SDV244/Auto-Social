@@ -16,7 +16,8 @@ SYSTEM = """You write 30-45 second faceless short-form video scripts for the nic
 Audience: {market} viewers, language: {language}.
 
 Rules:
-- You receive a transcript of a video that is performing well. Use it ONLY to learn the topic and why it works (hook, pacing, structure). Never reuse its wording, examples or sequence.
+- You receive EITHER a transcript of a video that is performing well OR a "TOPIC BRIEF" with no source video. For a brief, create the video from the topic alone, with concrete, accurate examples.
+- For a transcript: Use it ONLY to learn the topic and why it works (hook, pacing, structure). Never reuse its wording, examples or sequence.
 - Add a distinct angle the source does not have (a concrete workflow, a comparison, a mistake to avoid, a number you can justify). State that angle in "angle".
 - Do not invent facts, prices, features or statistics. If unsure, leave them out.
 
@@ -48,6 +49,8 @@ IN_PER_M, OUT_PER_M = 2.0, 10.0
 
 
 def build_user_prompt(video: Video, transcript: str, max_chars: int = 12000) -> str:
+    if transcript.startswith("TOPIC BRIEF:"):
+        return transcript[:max_chars]
     return (
         f"Reference video: {video.title} ({video.views:,} views, {video.age_days:.0f} days old)\n\n"
         f"Transcript:\n{transcript[:max_chars]}"
@@ -130,7 +133,7 @@ def _call_openrouter(cfg: Config, system: str, user: str, model: str | None = No
         headers=headers,
         json={
             "model": model or cfg.script_model,
-            "max_tokens": 3500,
+            "max_tokens": 7000,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         },
         timeout=120,
@@ -145,7 +148,7 @@ def _call_anthropic(cfg: Config, system: str, user: str, client=None, model: str
     client = client or anthropic.Anthropic()
     msg = client.messages.create(
         model=model or cfg.script_model,
-        max_tokens=3500,
+        max_tokens=7000,
         # cache_control keeps the fixed instructions cheap across the daily batch
         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user}],
@@ -157,7 +160,7 @@ def run(cfg: Config, budget: Budget, video: Video, transcript: str, client=None,
     model = cfg.final_model if final else cfg.script_model
     system = SYSTEM.format(niche=cfg.niche, market=cfg.market, language=cfg.language)
     user = build_user_prompt(video, transcript)
-    est = (len(system) + len(user)) / 4 / 1e6 * IN_PER_M + 3500 / 1e6 * OUT_PER_M
+    est = (len(system) + len(user)) / 4 / 1e6 * IN_PER_M + 5000 / 1e6 * OUT_PER_M
     budget.charge(est, "script generation")
     if cfg.llm_provider not in ("openrouter", "anthropic"):
         raise ValueError(f"unknown llm provider: {cfg.llm_provider}")
@@ -185,4 +188,4 @@ def run(cfg: Config, budget: Budget, video: Video, transcript: str, client=None,
         budget.charge(est, "script retry")
     if best:  # accept the first parseable draft; the human approval step catches the rest
         return best
-    raise RuntimeError(f"model returned an unusable script twice: {last}")
+    raise RuntimeError(f"model returned an unusable script 3 times: {last}")

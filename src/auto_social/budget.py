@@ -37,3 +37,19 @@ class Budget:
         data[self._month()] = round(self.spent() + amount_usd, 4)
         self.path.write_text(json.dumps(data, indent=2))
         return data[self._month()]
+
+
+def openrouter_balance() -> float | None:
+    """Remaining OpenRouter credits in USD (account total minus usage), or None if it cannot be read."""
+    import os
+
+    import httpx
+
+    headers = {}
+    if os.environ.get("OPENROUTER_API_KEY"):  # in the cloud sandbox the proxy injects the key
+        headers["Authorization"] = f"Bearer {os.environ['OPENROUTER_API_KEY']}"
+    try:
+        d = httpx.get("https://openrouter.ai/api/v1/credits", headers=headers, timeout=20).json()["data"]
+        return float(d["total_credits"]) - float(d["total_usage"])
+    except Exception:
+        return None

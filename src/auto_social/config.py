@@ -29,6 +29,8 @@ class Config:
     video_max_seconds: int = 18   # billed seconds of generated video per finished video
     publish_provider: str = "outbox"
     affiliate_cta: str = ""
+    hashtags: list[str] = field(default_factory=lambda: ["#AItools", "#productivity", "#ChatGPT", "#AIworkflow"])
+    post_time: str = "3:00 PM US Eastern"
     disclosure: str = "AI-assisted video."
 
     @classmethod
@@ -59,5 +61,7 @@ class Config:
             video_max_seconds=int(raw.get("video", {}).get("max_seconds", cls.video_max_seconds)),
             publish_provider=publish.get("provider", cls.publish_provider),
             affiliate_cta=raw.get("affiliate_cta", cls.affiliate_cta),
+            hashtags=list(raw.get("hashtags", ["#AItools", "#productivity", "#ChatGPT", "#AIworkflow"])),
+            post_time=raw.get("post_time", cls.post_time),
             disclosure=raw.get("disclosure", cls.disclosure),
         )

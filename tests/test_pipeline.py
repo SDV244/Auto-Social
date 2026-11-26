@@ -150,3 +150,22 @@ def test_continuous_take_boundaries_snap_to_pauses():
     assert cuts == [4.0, 8.0]
     assert voice._similar(voice._norm("Stop collecting AI tools."), voice._norm("stop collecting ai tools")) == 1.0
     assert voice._similar(voice._norm("Stop collecting AI tools."), voice._norm("Start something else entirely")) < 0.5
+
+
+def test_upload_kit_limits_and_disclosure(tmp_path):
+    from auto_social.stages import package
+
+    d = dict(GOOD)
+    d["title"] = "T" * 150
+    d["hook"] = "Stop collecting AI tools. " * 12
+    d["save_text"] = "Pick ONE task\\nRun it by hand"
+    cfg = Config(affiliate_cta="link in bio", disclosure="AI-assisted video.", hashtags=["#AItools", "#productivity", "#ChatGPT", "#x"])
+    s = script_stage.parse_script(json.dumps(d), cfg)
+    assert len(package.youtube_title(s)) <= 100
+    cap = package.tiktok_caption(s, cfg)
+    assert len(cap) <= 150 and cap.endswith("#AItools #productivity #ChatGPT")
+    desc = package.youtube_description(s, cfg)
+    assert "AI-assisted video." in desc and "#Shorts" in desc and "Pick ONE task\nRun it by hand" in desc
+    (tmp_path / "video.mp4").write_bytes(b"x")
+    out = package.build(tmp_path, s, cfg)
+    assert {p.name for p in out.iterdir()} >= {"video.mp4", "youtube_title.txt", "tiktok_caption.txt", "CHECKLIST.txt"}
